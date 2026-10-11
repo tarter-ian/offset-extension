@@ -27,6 +27,10 @@ const getJob = async (tabId) => (await chrome.storage.session.get(key(tabId)))[k
 const setJob = (tabId, job) => chrome.storage.session.set({ [key(tabId)]: job });
 const dropJob = (tabId) => chrome.storage.session.remove(key(tabId));
 
+// Counts already made for each chat (numbers per day, no titles or text), kept
+// on this computer between runs. See the "remembered" note in the counting scripts.
+const memoryKey = (service) => `memory:${service}`;
+
 async function finish(tabId, job, message, closeTab = true) {
   await dropJob(tabId);
   chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
@@ -70,6 +74,17 @@ async function inject(tabId, job) {
     await chrome.scripting.executeScript({ target, files: ['provider-relay.js'] });
     // The counting scripts report through window.Reclaim; give them one that talks to the relay.
     await chrome.scripting.executeScript({ target, world: 'MAIN', files: ['provider-shim.js'] });
+    // What earlier runs counted for this service, so unchanged chats are not read again.
+    const remembered = (await chrome.storage.local.get(memoryKey(job.service)))[memoryKey(job.service)] || {};
+    await chrome.scripting.executeScript({
+      target,
+      world: 'MAIN',
+      func: (service, data) => {
+        window.__offsetCache = window.__offsetCache || {};
+        window.__offsetCache[service] = data;
+      },
+      args: [job.service, remembered],
+    });
     await chrome.scripting.executeScript({ target, world: 'MAIN', files: [SERVICES[job.service].script] });
   } catch (e) {
     // The tab moved on before the scripts landed. The next page load tries again.
@@ -127,6 +142,16 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!sender.tab) return;
 
+  // From the Offset site: throw away the per-chat counts kept between runs.
+  if (message.type === 'forget') {
+    (async () => {
+      const all = await chrome.storage.local.get(null);
+      await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('memory:')));
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
   // From the Offset site, through site-bridge.js.
   if (message.type === 'measure' || message.type === 'measure-all') {
     const front = message.type === 'measure';
@@ -183,7 +208,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const job = await getJob(tabId);
     if (!job) return;
     if (message.type === 'done' && message.data && message.data.service === job.service) {
-      await finish(tabId, job, { type: 'usage', usage: message.data });
+      // Per-chat counts stay in the extension, on this computer. The site gets the totals only.
+      const { remember, ...usage } = message.data;
+      if (remember && typeof remember === 'object') await chrome.storage.local.set({ [memoryKey(job.service)]: remember });
+      await finish(tabId, job, { type: 'usage', usage });
     } else if (message.type === 'idle' && !job.front) {
       // The service's page loaded but counting never began: not signed in.
       await finish(tabId, job, { type: 'error', error: 'signed-out' });

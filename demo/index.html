@@ -47,7 +47,7 @@
         const n = (x) => Number(x || 0).toLocaleString('en-US');
         if (service === 'youtube') return `${n(u.videos)} videos and ${n(u.shorts)} Shorts, about ${n(Math.round(u.watchedHours))} hours, in ${u.windowDays} days${u.truncated ? ". Incomplete: stopped early" : ""}`;
         const images = u.images ? ` and ${n(u.images)} images` : '';
-        const short = u.failedConversations ? `. Incomplete: ${n(u.failedConversations)} chats could not be read, so this is too low` : u.truncated ? ". Incomplete: stopped early" : "";
+        const short = u.failedConversations ? `. Incomplete: ${n(u.failedConversations)} chats not read yet, so this is too low. Measure again later and it carries on from here` : u.truncated ? ". Incomplete: stopped early" : "";
         return `${n(u.prompts)} prompts${images} in ${u.windowDays} days${short}`;
       }
 
