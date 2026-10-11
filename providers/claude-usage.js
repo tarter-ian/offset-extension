@@ -12,7 +12,7 @@
   var PAGE = 50;
   var MAX_PAGES = 8;
   var MAX_CONVERSATIONS = 200;
-  var BATCH = 10;
+  var BATCH = 5;
 
   var sleep = function (ms) {
     return new Promise(function (r) { setTimeout(r, ms); });
@@ -66,7 +66,9 @@
     var ids = [];
     var truncated = false;
     for (var page = 0; page < MAX_PAGES; page++) {
-      var items = (await getJson(base + '/chat_conversations?limit=' + PAGE + '&offset=' + page * PAGE)) || [];
+      var items = await getJson(base + '/chat_conversations?limit=' + PAGE + '&offset=' + page * PAGE);
+      // A list page that cannot be read is a failure, not the end of the list.
+      if (!Array.isArray(items)) throw new Error('could not read the chat list');
       var older = false;
       for (var i = 0; i < items.length; i++) {
         if (Date.parse(items[i].updated_at) < since) {

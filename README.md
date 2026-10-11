@@ -92,3 +92,7 @@ services do not document, so one can stop working when its service changes.
 - Add the site's final domain to `content_scripts.matches` in `manifest.json`.
 - Add icons.
 - Submit it to the Chrome Web Store.
+
+## Licence
+
+MIT. See `LICENSE`.
