@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Offset: measure my usage",
+  "version": "0.6.0",
+  "description": "Counts how much you use ChatGPT, Claude, Gemini and YouTube, so Offset can work out your footprint. Only counts and dates are shared, never your chats or history.",
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://myactivity.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://offset-website-kappa.vercel.app/*",
+        "https://offset-website-git-step-1-estimate-tarter1.vercel.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "site-bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

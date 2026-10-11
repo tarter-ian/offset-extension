@@ -1,0 +1,190 @@
+// Offset extension, background worker.
+// The Offset site asks for services to be measured. For each one this opens the
+// service in a tab, runs the counting script there, hands the counts back to
+// the site and closes the tab.
+//
+// Two ways to ask:
+//   measure-all  Every service at once, in a separate minimized window the person
+//                never has to look at. A service they are not signed in to is
+//                reported as "signed-out" and its tab is closed.
+//   measure      One service, in a tab brought to the front, so the person can
+//                sign in. Counting starts once they have.
+
+const SERVICES = {
+  chatgpt: { url: 'https://chatgpt.com/', host: 'chatgpt.com', script: 'providers/chatgpt-usage.js' },
+  claude: { url: 'https://claude.ai/new', host: 'claude.ai', script: 'providers/claude-usage.js' },
+  youtube: { url: 'https://myactivity.google.com/product/youtube', host: 'myactivity.google.com', script: 'providers/youtube-activity.js' },
+  gemini: { url: 'https://myactivity.google.com/product/gemini', host: 'myactivity.google.com', script: 'providers/gemini-activity.js' },
+};
+
+// Long enough for someone to sign in, including two-step checks.
+const TIMEOUT_MS = 10 * 60 * 1000;
+
+// Jobs are kept in session storage, keyed by the measuring tab's id, because
+// Chrome stops this worker whenever it is idle (for example during a login).
+const key = (tabId) => `job:${tabId}`;
+const getJob = async (tabId) => (await chrome.storage.session.get(key(tabId)))[key(tabId)] ?? null;
+const setJob = (tabId, job) => chrome.storage.session.set({ [key(tabId)]: job });
+const dropJob = (tabId) => chrome.storage.session.remove(key(tabId));
+
+async function finish(tabId, job, message, closeTab = true) {
+  await dropJob(tabId);
+  chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
+  if (closeTab) chrome.tabs.remove(tabId).catch(() => {});
+  // A tab the person was working in goes back to the site; background ones never took the screen.
+  if (job.front) chrome.tabs.update(job.siteTabId, { active: true }).catch(() => {});
+}
+
+const newJob = (service, front, requestId, siteTab) => ({ service, front, requestId, siteTabId: siteTab.id, startedAt: Date.now() });
+
+// One service in a tab beside the site, in front, so the person can sign in.
+async function startInFront(service, requestId, siteTab) {
+  const tab = await chrome.tabs.create({ url: SERVICES[service].url, active: true, windowId: siteTab.windowId });
+  await setJob(tab.id, newJob(service, true, requestId, siteTab));
+}
+
+// Every service in a window of its own, minimized, so the site keeps the
+// screen and the keyboard. The window goes away when its last tab closes.
+async function startInBackground(services, requestId, siteTab) {
+  const urls = services.map((s) => SERVICES[s].url);
+  let tabs;
+  try {
+    const win = await chrome.windows.create({ url: urls, focused: false, state: 'minimized' });
+    tabs = win.tabs;
+  } catch (e) {
+    tabs = null;
+  }
+  if (!tabs || tabs.length !== services.length) {
+    // No separate window to be had; use background tabs beside the site instead.
+    if (tabs) for (const t of tabs) chrome.tabs.remove(t.id).catch(() => {});
+    tabs = [];
+    for (const url of urls) tabs.push(await chrome.tabs.create({ url, active: false, windowId: siteTab.windowId }));
+  }
+  for (let i = 0; i < services.length; i++) await setJob(tabs[i].id, newJob(services[i], false, requestId, siteTab));
+}
+
+async function inject(tabId, job) {
+  const target = { tabId };
+  try {
+    // Receives the counts inside the extension's own world and passes them here.
+    await chrome.scripting.executeScript({ target, files: ['provider-relay.js'] });
+    // The counting scripts report through window.Reclaim; give them one that talks to the relay.
+    await chrome.scripting.executeScript({ target, world: 'MAIN', files: ['provider-shim.js'] });
+    await chrome.scripting.executeScript({ target, world: 'MAIN', files: [SERVICES[job.service].script] });
+  } catch (e) {
+    // The tab moved on before the scripts landed. The next page load tries again.
+  }
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
+  if (change.status !== 'complete') return;
+  const job = await getJob(tabId);
+  if (!job) return;
+  if (Date.now() - job.startedAt > TIMEOUT_MS) {
+    await finish(tabId, job, { type: 'error', error: 'timeout' });
+    return;
+  }
+  // tab.url is only visible on the hosts this extension may read, so a login
+  // page on another host shows up here as no url at all.
+  const onService = !!tab.url && new URL(tab.url).host === SERVICES[job.service].host;
+  if (onService) await inject(tabId, job);
+  else if (!job.front) await finish(tabId, job, { type: 'error', error: 'signed-out' });
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  const job = await getJob(tabId);
+  if (job) await finish(tabId, job, { type: 'error', error: 'closed' }, false);
+});
+
+// The extension is installed with access to no site at all. It asks for each
+// service's site the first time that service is measured, on its own page
+// (permit.html), because Chrome only lets an extension page ask.
+const origin = (service) => `https://${SERVICES[service].host}/*`;
+const allowed = (service) => chrome.permissions.contains({ origins: [origin(service)] });
+
+const PERMIT_PAGE = chrome.runtime.getURL('permit.html');
+const askKey = (id) => `ask:${id}`;
+
+function begin(services, front, requestId, siteTab) {
+  if (!services.length) return Promise.resolve();
+  return front ? startInFront(services[0], requestId, siteTab) : startInBackground(services, requestId, siteTab);
+}
+
+function tellSite(siteTabId, message) {
+  chrome.tabs.sendMessage(siteTabId, message).catch(() => {});
+}
+
+// If the person closes the permission window without answering, nothing was allowed.
+chrome.windows.onRemoved.addListener(async (windowId) => {
+  const all = await chrome.storage.session.get(null);
+  for (const [k, ask] of Object.entries(all)) {
+    if (!k.startsWith('ask:') || ask.windowId !== windowId) continue;
+    await chrome.storage.session.remove(k);
+    for (const service of ask.missing) tellSite(ask.siteTabId, { type: 'error', error: 'denied', service, requestId: ask.requestId });
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!sender.tab) return;
+
+  // From the Offset site, through site-bridge.js.
+  if (message.type === 'measure' || message.type === 'measure-all') {
+    const front = message.type === 'measure';
+    const wanted = front ? [message.service] : message.services || Object.keys(SERVICES);
+    const services = wanted.filter((s) => Object.hasOwn(SERVICES, s));
+    if (!services.length) {
+      sendResponse({ ok: false, error: 'unknown-service' });
+      return;
+    }
+    (async () => {
+      const ok = await Promise.all(services.map(allowed));
+      const ready = services.filter((s, i) => ok[i]);
+      const missing = services.filter((s, i) => !ok[i]);
+      await begin(ready, front, message.requestId, sender.tab);
+      if (missing.length) {
+        const id = crypto.randomUUID();
+        // Saved before the window opens, so the page finds it however fast it loads.
+        const ask = { missing, front, requestId: message.requestId, siteTabId: sender.tab.id, siteWindowId: sender.tab.windowId, windowId: null };
+        await chrome.storage.session.set({ [askKey(id)]: ask });
+        const win = await chrome.windows.create({ url: `${PERMIT_PAGE}?id=${id}`, type: 'popup', width: 480, height: 620, focused: true });
+        await chrome.storage.session.set({ [askKey(id)]: { ...ask, windowId: win.id } });
+      }
+      sendResponse({ ok: true, services, needsPermission: missing });
+    })();
+    return true;
+  }
+
+  // From permit.html, after the person answered Chrome's own permission prompt.
+  if (message.type === 'permitted' && sender.url && sender.url.startsWith(PERMIT_PAGE)) {
+    (async () => {
+      const ask = (await chrome.storage.session.get(askKey(message.id)))[askKey(message.id)];
+      if (!ask) return;
+      await chrome.storage.session.remove(askKey(message.id));
+      // Measure what the person picked, and only where Chrome now reports access.
+      const picked = Array.isArray(message.services) ? message.services : [];
+      const ok = await Promise.all(ask.missing.map(allowed));
+      const granted = ask.missing.filter((s, i) => ok[i] && picked.includes(s));
+      const siteTab = { id: ask.siteTabId, windowId: ask.siteWindowId };
+      for (const service of ask.missing) {
+        if (!granted.includes(service)) tellSite(ask.siteTabId, { type: 'error', error: 'denied', service, requestId: ask.requestId });
+      }
+      await begin(granted, ask.front, ask.requestId, siteTab);
+      chrome.windows.remove(ask.windowId).catch(() => {});
+      if (!ask.front) chrome.windows.update(ask.siteWindowId, { focused: true }).catch(() => {});
+    })();
+    return;
+  }
+
+  // From a measuring tab, through provider-relay.js.
+  (async () => {
+    const tabId = sender.tab.id;
+    const job = await getJob(tabId);
+    if (!job) return;
+    if (message.type === 'done' && message.data && message.data.service === job.service) {
+      await finish(tabId, job, { type: 'usage', usage: message.data });
+    } else if (message.type === 'idle' && !job.front) {
+      // The service's page loaded but counting never began: not signed in.
+      await finish(tabId, job, { type: 'error', error: 'signed-out' });
+    }
+  })();
+});

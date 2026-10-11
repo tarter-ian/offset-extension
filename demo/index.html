@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offset extension test page</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; max-width: 640px; margin: 48px auto; padding: 0 16px; color: #14201b; }
+      h1 { font-size: 28px; margin: 0 0 4px; }
+      .muted { color: #5b6a63; }
+      button { min-height: 44px; padding: 0 16px; font: inherit; font-weight: 600; border: 2px solid #14201b; border-radius: 6px; background: #fff; cursor: pointer; }
+      button:hover:not(:disabled) { background: #14201b; color: #fff; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      #all { background: #14201b; color: #fff; margin: 16px 0; }
+      #status { padding: 10px 12px; border-left: 3px solid #14201b; background: #f3f4f1; }
+      table { border-collapse: collapse; margin-top: 8px; width: 100%; }
+      td, th { text-align: left; padding: 8px; border-bottom: 1px solid #dfe3de; vertical-align: middle; }
+      td.result { font-variant-numeric: tabular-nums; }
+      td.action { text-align: right; white-space: nowrap; }
+      td button { min-height: 36px; padding: 0 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Offset extension test page</h1>
+    <p class="muted">Stands in for the Offset site. Measure everything at once, or one service at a time.</p>
+    <p id="status">Looking for the extension...</p>
+    <button id="all" disabled>Measure everything</button>
+    <table>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <script>
+      const NAMES = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', youtube: 'YouTube' };
+      const WHY = { closed: 'tab was closed', timeout: 'took too long', unavailable: 'extension did not answer', denied: 'you did not allow it' };
+      const status = document.getElementById('status');
+      const all = document.getElementById('all');
+      const rows = document.getElementById('rows');
+      // service -> { kind: 'idle' | 'counting' | 'login' | 'signed-out' | 'done' | 'failed', text }
+      const state = Object.fromEntries(Object.keys(NAMES).map((s) => [s, { kind: 'idle', text: '' }]));
+      let found = false;
+      let noAnswer;
+
+      const send = (message) => window.postMessage({ source: 'offset-site', ...message }, location.origin);
+      const working = (s) => s.kind === 'counting' || s.kind === 'login';
+
+      function summary(service, u) {
+        const n = (x) => Number(x || 0).toLocaleString('en-US');
+        if (service === 'youtube') return `${n(u.videos)} videos and ${n(u.shorts)} Shorts, about ${n(Math.round(u.watchedHours))} hours, in ${u.windowDays} days`;
+        const images = u.images ? ` and ${n(u.images)} images` : '';
+        return `${n(u.prompts)} prompts${images} in ${u.windowDays} days`;
+      }
+
+      // In the background, in a separate minimized window.
+      function measure(services) {
+        for (const s of services) state[s] = { kind: 'counting', text: 'Counting...' };
+        draw();
+        send({ type: 'measure-all', services, requestId: crypto.randomUUID() });
+        clearTimeout(noAnswer);
+        // The extension answers "started" at once. Silence means this page has lost
+        // touch with it, which happens when the extension was reloaded after the page.
+        noAnswer = setTimeout(() => {
+          for (const s of services) state[s] = { kind: 'idle', text: '' };
+          draw();
+          status.textContent = 'The extension did not answer. Reload this page and try again.';
+        }, 4000);
+      }
+
+      // In a front tab, so the person can log in.
+      function logIn(service) {
+        state[service] = { kind: 'login', text: 'Waiting for you to log in...' };
+        draw();
+        send({ type: 'measure', service, requestId: crypto.randomUUID() });
+      }
+
+      function draw() {
+        rows.innerHTML = '';
+        for (const service of Object.keys(NAMES)) {
+          const s = state[service];
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<th>${NAMES[service]}</th><td class="result"></td><td class="action"></td>`;
+          tr.children[1].textContent = s.kind === 'signed-out' ? 'Not logged in' : s.text;
+          const b = document.createElement('button');
+          if (s.kind === 'signed-out') {
+            b.textContent = `Log in to ${NAMES[service]}`;
+            b.onclick = () => logIn(service);
+          } else {
+            b.textContent = s.kind === 'done' ? 'Measure again' : 'Measure';
+            b.onclick = () => measure([service]);
+          }
+          b.disabled = !found || working(s);
+          tr.children[2].appendChild(b);
+          rows.appendChild(tr);
+        }
+        const busy = Object.values(state).some(working);
+        all.disabled = !found || busy;
+        if (found && busy) status.textContent = 'Working in the background. You can stay on this page.';
+        else if (found && Object.values(state).some((s) => s.kind !== 'idle')) status.textContent = 'Done.';
+      }
+
+      window.addEventListener('message', (event) => {
+        if (event.source !== window || event.origin !== location.origin) return;
+        const m = event.data;
+        if (!m || m.source !== 'offset-extension') return;
+        if (m.type === 'ready') {
+          found = true;
+          status.textContent = `Extension found (version ${m.version}).`;
+          draw();
+        } else if (m.type === 'started') {
+          clearTimeout(noAnswer);
+          for (const s of m.needsPermission || []) state[s] = { kind: 'counting', text: 'Waiting for you to allow it...' };
+          draw();
+        } else if (m.type === 'usage') {
+          state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };
+          draw();
+        } else if (m.type === 'error' && m.service && state[m.service]) {
+          state[m.service] =
+            m.error === 'signed-out' ? { kind: 'signed-out', text: '' } : { kind: 'failed', text: `Not measured: ${WHY[m.error] || m.error}` };
+          draw();
+        } else if (m.type === 'error') {
+          clearTimeout(noAnswer);
+          for (const s of Object.keys(state)) if (working(state[s])) state[s] = { kind: 'idle', text: '' };
+          draw();
+          status.textContent = `The extension could not start: ${WHY[m.error] || m.error}.`;
+        }
+      });
+
+      all.addEventListener('click', () => measure(Object.keys(NAMES)));
+
+      draw();
+      send({ type: 'ping' });
+      setTimeout(() => {
+        if (!found) status.textContent = 'Extension not found. Load it in chrome://extensions, then reload this page.';
+      }, 1500);
+    </script>
+  </body>
+</html>

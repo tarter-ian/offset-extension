@@ -1,0 +1,63 @@
+// The permission window. Lists the services the site asked to measure that the
+// extension cannot read yet, and asks Chrome for the ones the person picks.
+
+const SERVICES = {
+  chatgpt: { name: 'ChatGPT', site: 'chatgpt.com', reads: 'How many prompts and images you sent each day.' },
+  claude: { name: 'Claude', site: 'claude.ai', reads: 'How many prompts you sent each day, and how much of your plan limit is used.' },
+  gemini: { name: 'Gemini', site: 'myactivity.google.com', reads: 'How many Gemini prompts Google recorded each day.' },
+  youtube: { name: 'YouTube', site: 'myactivity.google.com', reads: 'How many videos you watched each day and for how long.' },
+};
+
+const id = new URLSearchParams(location.search).get('id');
+const list = document.getElementById('list');
+const note = document.getElementById('note');
+const buttons = ['all', 'some', 'none'].map((b) => document.getElementById(b));
+
+const ask = (await chrome.storage.session.get(`ask:${id}`))[`ask:${id}`];
+const missing = ask ? ask.missing.filter((s) => SERVICES[s]) : [];
+
+if (!missing.length) {
+  note.textContent = 'This request is no longer open. You can close this window.';
+  buttons.forEach((b) => (b.disabled = true));
+}
+
+for (const service of missing) {
+  const s = SERVICES[service];
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = true;
+  box.value = service;
+  const text = document.createElement('span');
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = `${s.name} (${s.site})`;
+  const reads = document.createElement('span');
+  reads.className = 'reads';
+  reads.textContent = s.reads;
+  text.append(name, reads);
+  label.append(box, text);
+  list.append(label);
+}
+
+// Gemini and YouTube are both read from Google's activity site, so Chrome treats them as one.
+if (missing.includes('gemini') && missing.includes('youtube')) {
+  note.textContent = 'Gemini and YouTube are both read from myactivity.google.com, so allowing one allows both.';
+}
+
+async function allow(services) {
+  buttons.forEach((b) => (b.disabled = true));
+  if (services.length) {
+    const origins = [...new Set(services.map((s) => `https://${SERVICES[s].site}/*`))];
+    // Chrome shows its own prompt here. It must be started by this click.
+    await chrome.permissions.request({ origins }).catch(() => false);
+  }
+  // The background worker checks what Chrome actually granted and closes this window.
+  await chrome.runtime.sendMessage({ type: 'permitted', id, services });
+}
+
+document.getElementById('all').addEventListener('click', () => allow(missing));
+document.getElementById('some').addEventListener('click', () =>
+  allow([...list.querySelectorAll('input:checked')].map((box) => box.value)),
+);
+document.getElementById('none').addEventListener('click', () => allow([]));

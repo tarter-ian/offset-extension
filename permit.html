@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offset: allow measuring</title>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 24px; color: #14201b; background: #fff; }
+      h1 { font-size: 20px; margin: 0 0 6px; }
+      p { margin: 0 0 12px; }
+      .muted { color: #5b6a63; font-size: 14px; }
+      label { display: flex; gap: 10px; align-items: flex-start; padding: 12px 0; border-top: 1px solid #dfe3de; cursor: pointer; }
+      label:last-of-type { border-bottom: 1px solid #dfe3de; }
+      input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
+      .name { font-weight: 600; }
+      .reads { display: block; color: #5b6a63; font-size: 14px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 14px; }
+      button { min-height: 44px; padding: 0 16px; font: inherit; font-weight: 600; border: 2px solid #14201b; border-radius: 6px; background: #fff; cursor: pointer; }
+      button.main { background: #14201b; color: #fff; }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      #note { min-height: 1.5em; }
+    </style>
+  </head>
+  <body>
+    <h1>Allow Offset to count your usage?</h1>
+    <p>Offset counts how much you used each service in the last 30 days. Choose which ones.</p>
+    <div id="list"></div>
+    <div class="actions">
+      <button id="all" class="main">Allow all</button>
+      <button id="some">Allow selected</button>
+      <button id="none">Not now</button>
+    </div>
+    <p id="note" class="muted"></p>
+    <p class="muted">
+      Chrome will ask you to confirm. Offset reads these sites only when you press Measure, and never your chats, video
+      titles or passwords. You can take access back at any time in Chrome's extension settings.
+    </p>
+    <script type="module" src="permit.js"></script>
+  </body>
+</html>
