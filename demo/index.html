@@ -108,6 +108,7 @@
         } else if (m.type === 'started') {
           clearTimeout(noAnswer);
           for (const s of m.needsPermission || []) state[s] = { kind: 'counting', text: 'Waiting for you to allow it...' };
+          if (m.allowed) for (const s of m.services || []) if (state[s]) state[s] = { kind: 'counting', text: 'Counting...' };
           draw();
         } else if (m.type === 'usage') {
           state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };

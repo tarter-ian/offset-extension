@@ -169,6 +169,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!granted.includes(service)) tellSite(ask.siteTabId, { type: 'error', error: 'denied', service, requestId: ask.requestId });
       }
       await begin(granted, ask.front, ask.requestId, siteTab);
+      // Lets the page swap "waiting for you to allow it" for "counting".
+      if (granted.length) tellSite(ask.siteTabId, { type: 'started', requestId: ask.requestId, services: granted, allowed: true });
       chrome.windows.remove(ask.windowId).catch(() => {});
       if (!ask.front) chrome.windows.update(ask.siteWindowId, { focused: true }).catch(() => {});
     })();

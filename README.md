@@ -40,6 +40,7 @@ messages on the page's origin.
 | --- | --- |
 | `{ type: 'ready', version }` | Installed. Sent on page load and in answer to `ping`. |
 | `{ type: 'started', requestId, services, needsPermission }` | Under way. `needsPermission` lists services the person is being asked to allow first. |
+| `{ type: 'started', requestId, services, allowed: true }` | Sent again once the person allows access: these services are now counting. |
 | `{ type: 'usage', service, requestId, usage }` | One service's counts. |
 | `{ type: 'error', service, requestId, error }` | `signed-out`, `denied`, `closed`, `timeout` or `unavailable`. |
 
