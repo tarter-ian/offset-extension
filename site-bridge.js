@@ -14,19 +14,34 @@
 //                     { source: 'offset-extension', type: 'counting', service, requestId }
 //                       the person allowed this service and its count has begun
 //                     { source: 'offset-extension', type: 'usage' | 'error', service, requestId, usage?, error? }
-//                       error is 'signed-out', 'denied', 'closed', 'timeout' or 'unavailable'
+//                       error is 'signed-out', 'denied', 'closed', 'timeout', 'reload-page' or 'unavailable'
+//                       'reload-page': the extension was reloaded or updated after this page loaded,
+//                       so this copy can no longer reach it until the page is refreshed
 (function () {
   var toPage = function (message) {
     window.postMessage(Object.assign({ source: 'offset-extension' }, message), location.origin);
   };
+  // After the extension is reloaded or updated, this copy stays on the page but
+  // chrome.runtime is gone, and every call to it throws.
+  var alive = function () {
+    try {
+      return !!chrome.runtime && !!chrome.runtime.id;
+    } catch (e) {
+      return false;
+    }
+  };
   var ready = function () {
-    toPage({ type: 'ready', version: chrome.runtime.getManifest().version });
+    if (alive()) toPage({ type: 'ready', version: chrome.runtime.getManifest().version });
   };
 
   window.addEventListener('message', function (event) {
     if (event.source !== window || event.origin !== location.origin) return;
     var m = event.data;
     if (!m || m.source !== 'offset-site') return;
+    if (!alive()) {
+      toPage({ type: 'error', error: 'reload-page', service: m.service, requestId: m.requestId });
+      return;
+    }
     if (m.type === 'ping') {
       ready();
     } else if (m.type === 'forget') {
