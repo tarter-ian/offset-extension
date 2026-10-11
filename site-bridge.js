@@ -9,6 +9,8 @@
 // Extension -> page:  { source: 'offset-extension', type: 'ready', version }
 //                     { source: 'offset-extension', type: 'started', requestId, services, needsPermission }
 //                       needsPermission lists services the person is now being asked to allow
+//                     { source: 'offset-extension', type: 'counting', service, requestId }
+//                       the person allowed this service and its count has begun
 //                     { source: 'offset-extension', type: 'usage' | 'error', service, requestId, usage?, error? }
 //                       error is 'signed-out', 'denied', 'closed', 'timeout' or 'unavailable'
 (function () {
@@ -42,7 +44,7 @@
   });
 
   chrome.runtime.onMessage.addListener(function (message) {
-    if (message.type === 'usage' || message.type === 'error') toPage(message);
+    if (message.type === 'usage' || message.type === 'error' || message.type === 'counting') toPage(message);
   });
 
   ready();
