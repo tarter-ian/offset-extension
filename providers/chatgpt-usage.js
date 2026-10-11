@@ -11,7 +11,7 @@
   var PAGE = 28;
   var MAX_PAGES = 12;
   var MAX_CONVERSATIONS = 200;
-  var BATCH = 14;
+  var BATCH = 3;
 
   var sleep = function (ms) {
     return new Promise(function (r) { setTimeout(r, ms); });
@@ -31,10 +31,32 @@
     el.textContent = text;
   }
 
+  // ChatGPT allows only so many chat reads a minute. When it says "too many
+  // requests" it also says how long to wait; every request then holds off
+  // until that time, so the wait is served once and not once per request.
+  // If it is still refusing after this much waiting, stop and report what was
+  // read as incomplete, so the person is not left watching a tab for good.
+  var MAX_HOLD_MS = 150000;
+  var holdUntil = 0;
+  var heldMs = 0;
   async function getJson(url, headers) {
-    for (var attempt = 0; attempt < 4; attempt++) {
+    for (var attempt = 0; attempt < 5; attempt++) {
+      var wait = holdUntil - Date.now();
+      if (wait > 0) {
+        banner('ChatGPT asked us to slow down. Waiting ' + Math.ceil(wait / 1000) + ' seconds...');
+        await sleep(wait);
+      }
       var res = await fetch(url, { headers: headers, credentials: 'include' });
-      if (res.status === 429 || res.status >= 500) {
+      if (res.status === 429) {
+        if (heldMs >= MAX_HOLD_MS) return null;
+        if (holdUntil <= Date.now()) {
+          var asked = (Math.min(Number(res.headers.get('retry-after')) || 20, 90) + 1) * 1000;
+          holdUntil = Date.now() + asked;
+          heldMs += asked;
+        }
+        continue;
+      }
+      if (res.status >= 500) {
         await sleep(1500 * (attempt + 1));
         continue;
       }
@@ -73,7 +95,9 @@
     var truncated = false;
     for (var page = 0; page < MAX_PAGES; page++) {
       var list = await getJson('/backend-api/conversations?offset=' + page * PAGE + '&limit=' + PAGE + '&order=updated', headers);
-      var items = (list && list.items) || [];
+      // A list page that cannot be read is a failure, not the end of the list.
+      if (!list || !Array.isArray(list.items)) throw new Error('could not read the chat list');
+      var items = list.items;
       var older = false;
       for (var i = 0; i < items.length; i++) {
         if (Date.parse(items[i].update_time) < since) {
@@ -96,20 +120,33 @@
       return days[key] || (days[key] = { date: key, prompts: 0, reasoning: 0, images: 0 });
     };
     var conversations = 0;
-    var failed = 0;
 
-    for (var start = 0; start < ids.length; start += BATCH) {
-      banner('Counting your ChatGPT use: ' + Math.min(start + BATCH, ids.length) + ' of ' + ids.length + ' chats');
-      var batch = await Promise.all(
-        ids.slice(start, start + BATCH).map(function (id) {
-          return getJson('/backend-api/conversation/' + id, headers).catch(function () { return null; });
-        }),
-      );
-      batch.forEach(function (c) {
-        if (!c || !c.mapping) {
-          failed++;
-          return;
-        }
+    // ChatGPT turns requests away when too many arrive together. A chat that
+    // could not be read is tried again, slowly, so the total is not short.
+    var todo = ids;
+    for (var pass = 0; pass < 4 && todo.length && (pass === 0 || heldMs < MAX_HOLD_MS); pass++) {
+      var size = pass === 0 ? BATCH : 1;
+      var missed = [];
+      for (var start = 0; start < todo.length; start += size) {
+        var done = ids.length - todo.length + start;
+        banner('Counting your ChatGPT use: ' + Math.min(done + size, ids.length) + ' of ' + ids.length + ' chats');
+        if (pass > 0) await sleep(1500 * pass);
+        var group = todo.slice(start, start + size);
+        var batch = await Promise.all(
+          group.map(function (id) {
+            return getJson('/backend-api/conversation/' + id, headers).catch(function () { return null; });
+          }),
+        );
+        batch.forEach(function (c, i) {
+          if (!c || !c.mapping) missed.push(group[i]);
+          else count(c);
+        });
+      }
+      todo = missed;
+    }
+    var failed = todo.length;
+
+    function count(c) {
         var used = false;
         Object.keys(c.mapping).forEach(function (k) {
           var m = c.mapping[k].message;
@@ -128,7 +165,6 @@
           }
         });
         if (used) conversations++;
-      });
     }
 
     var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
