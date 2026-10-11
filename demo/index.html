@@ -109,6 +109,9 @@
           clearTimeout(noAnswer);
           for (const s of m.needsPermission || []) state[s] = { kind: 'counting', text: 'Waiting for you to allow it...' };
           draw();
+        } else if (m.type === 'counting' && state[m.service]) {
+          state[m.service] = { kind: 'counting', text: 'Counting...' };
+          draw();
         } else if (m.type === 'usage') {
           state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };
           draw();

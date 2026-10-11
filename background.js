@@ -168,6 +168,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       for (const service of ask.missing) {
         if (!granted.includes(service)) tellSite(ask.siteTabId, { type: 'error', error: 'denied', service, requestId: ask.requestId });
       }
+      // Lets the site move these from "waiting for permission" to "counting".
+      for (const service of granted) tellSite(ask.siteTabId, { type: 'counting', service, requestId: ask.requestId });
       await begin(granted, ask.front, ask.requestId, siteTab);
       chrome.windows.remove(ask.windowId).catch(() => {});
       if (!ask.front) chrome.windows.update(ask.siteWindowId, { focused: true }).catch(() => {});
