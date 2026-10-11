@@ -86,12 +86,36 @@
     });
   }
 
+  // Counts for one chat, by day: { "2026-10-01": [prompts, reasoning, images] }.
+  function countChat(c, since, now) {
+    var days = {};
+    Object.keys(c.mapping).forEach(function (k) {
+      var m = c.mapping[k].message;
+      if (!m || !m.author || typeof m.create_time !== 'number') return;
+      var ms = m.create_time * 1000;
+      if (ms < since || ms > now + 86400000) return;
+      var type = m.content && m.content.content_type;
+      var slot = m.author.role === 'user' && (type === 'text' || type === 'multimodal_text')
+        ? 0
+        : m.author.role === 'assistant' && type === 'reasoning_recap'
+          ? 1
+          : isImageMessage(m)
+            ? 2
+            : -1;
+      if (slot < 0) return;
+      var key = new Date(ms).toISOString().slice(0, 10);
+      (days[key] || (days[key] = [0, 0, 0]))[slot]++;
+    });
+    return days;
+  }
+
   async function collect(s) {
     var headers = { authorization: 'Bearer ' + s.accessToken };
     var now = Date.now();
     var since = now - WINDOW_DAYS * 86400000;
+    var sinceDate = new Date(since).toISOString().slice(0, 10);
 
-    var ids = [];
+    var chats = [];
     var truncated = false;
     for (var page = 0; page < MAX_PAGES; page++) {
       var list = await getJson('/backend-api/conversations?offset=' + page * PAGE + '&limit=' + PAGE + '&order=updated', headers);
@@ -104,68 +128,68 @@
           older = true;
           break;
         }
-        ids.push(items[i].id);
+        chats.push({ id: items[i].id, updated: items[i].update_time });
       }
       if (older || items.length < PAGE) break;
       if (page === MAX_PAGES - 1) truncated = true;
     }
-    if (ids.length > MAX_CONVERSATIONS) {
-      ids = ids.slice(0, MAX_CONVERSATIONS);
+    if (chats.length > MAX_CONVERSATIONS) {
+      chats = chats.slice(0, MAX_CONVERSATIONS);
       truncated = true;
     }
 
-    var days = {};
-    var day = function (ms) {
-      var key = new Date(ms).toISOString().slice(0, 10);
-      return days[key] || (days[key] = { date: key, prompts: 0, reasoning: 0, images: 0 });
-    };
-    var conversations = 0;
+    // What earlier runs counted, per chat, handed in by the extension. A chat
+    // that has not changed since is not read again, which keeps the number of
+    // reads under ChatGPT's limit and lets a run that was cut short be finished
+    // by the next one. It holds counts only, never titles or text.
+    var remembered = (window.__offsetCache && window.__offsetCache.chatgpt) || {};
+    var counted = {};
+    var todo = [];
+    chats.forEach(function (chat) {
+      var old = remembered[chat.id];
+      if (old && old.u === chat.updated && old.d) counted[chat.id] = { u: old.u, d: old.d };
+      else todo.push(chat);
+    });
+    var reused = chats.length - todo.length;
 
-    // ChatGPT turns requests away when too many arrive together. A chat that
-    // could not be read is tried again, slowly, so the total is not short.
-    var todo = ids;
+    // ChatGPT turns requests away past its limit. A chat that could not be read
+    // is tried again, one at a time, so the total is not short.
     for (var pass = 0; pass < 4 && todo.length && (pass === 0 || heldMs < MAX_HOLD_MS); pass++) {
       var size = pass === 0 ? BATCH : 1;
       var missed = [];
       for (var start = 0; start < todo.length; start += size) {
-        var done = ids.length - todo.length + start;
-        banner('Counting your ChatGPT use: ' + Math.min(done + size, ids.length) + ' of ' + ids.length + ' chats');
+        var have = Object.keys(counted).length;
+        banner('Counting your ChatGPT use: ' + have + ' of ' + chats.length + ' chats');
         if (pass > 0) await sleep(1500 * pass);
         var group = todo.slice(start, start + size);
         var batch = await Promise.all(
-          group.map(function (id) {
-            return getJson('/backend-api/conversation/' + id, headers).catch(function () { return null; });
+          group.map(function (chat) {
+            return getJson('/backend-api/conversation/' + chat.id, headers).catch(function () { return null; });
           }),
         );
         batch.forEach(function (c, i) {
           if (!c || !c.mapping) missed.push(group[i]);
-          else count(c);
+          else counted[group[i].id] = { u: group[i].updated, d: countChat(c, since, now) };
         });
       }
       todo = missed;
     }
-    var failed = todo.length;
 
-    function count(c) {
-        var used = false;
-        Object.keys(c.mapping).forEach(function (k) {
-          var m = c.mapping[k].message;
-          if (!m || !m.author || typeof m.create_time !== 'number') return;
-          var ms = m.create_time * 1000;
-          if (ms < since || ms > now + 86400000) return;
-          var type = m.content && m.content.content_type;
-          if (m.author.role === 'user' && (type === 'text' || type === 'multimodal_text')) {
-            day(ms).prompts++;
-            used = true;
-          } else if (m.author.role === 'assistant' && type === 'reasoning_recap') {
-            day(ms).reasoning++;
-          } else if (isImageMessage(m)) {
-            day(ms).images++;
-            used = true;
-          }
-        });
-        if (used) conversations++;
-    }
+    var days = {};
+    var conversations = 0;
+    Object.keys(counted).forEach(function (id) {
+      var d = counted[id].d;
+      var used = false;
+      Object.keys(d).forEach(function (date) {
+        if (date < sinceDate) return;
+        var day = days[date] || (days[date] = { date: date, prompts: 0, reasoning: 0, images: 0 });
+        day.prompts += d[date][0];
+        day.reasoning += d[date][1];
+        day.images += d[date][2];
+        if (d[date][0] + d[date][2] > 0) used = true;
+      });
+      if (used) conversations++;
+    });
 
     var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
     var sum = function (key) {
@@ -183,7 +207,11 @@
       activeDays: daily.filter(function (d) { return d.prompts + d.images > 0; }).length,
       daily: daily,
       truncated: truncated,
-      failedConversations: failed,
+      // Chats in the window that could not be read this time. Above zero, the totals are too low.
+      failedConversations: todo.length,
+      reusedConversations: reused,
+      // For the extension to keep for next time. It removes this before anything goes to the site.
+      remember: counted,
     };
   }
 

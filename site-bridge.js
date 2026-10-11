@@ -6,6 +6,8 @@
 //                       every service at once in background tabs; signed-out ones come back as an error
 //                     window.postMessage({ source: 'offset-site', type: 'measure', service, requestId })
 //                       one service in a front tab, so the person can sign in
+//                     window.postMessage({ source: 'offset-site', type: 'forget' })
+//                       delete the per-chat counts the extension keeps between runs; answered with 'forgotten'
 // Extension -> page:  { source: 'offset-extension', type: 'ready', version }
 //                     { source: 'offset-extension', type: 'started', requestId, services, needsPermission }
 //                       needsPermission lists services the person is now being asked to allow
@@ -27,6 +29,10 @@
     if (!m || m.source !== 'offset-site') return;
     if (m.type === 'ping') {
       ready();
+    } else if (m.type === 'forget') {
+      chrome.runtime.sendMessage({ type: 'forget' }, function (res) {
+        toPage({ type: chrome.runtime.lastError || !res ? 'error' : 'forgotten', error: res ? undefined : 'unavailable' });
+      });
     } else if (m.type === 'measure' || m.type === 'measure-all') {
       var request = { type: m.type, service: m.service, services: m.services, requestId: m.requestId };
       chrome.runtime.sendMessage(request, function (res) {

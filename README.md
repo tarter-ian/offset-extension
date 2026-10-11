@@ -33,6 +33,7 @@ messages on the page's origin.
 | Page sends (`source: 'offset-site'`) | Meaning |
 | --- | --- |
 | `{ type: 'ping' }` | Is the extension installed? |
+| `{ type: 'forget' }` | Delete the per-chat counts the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
 | `{ type: 'measure-all', requestId, services? }` | Measure every service, or the ones listed, in a separate minimized window. |
 | `{ type: 'measure', service, requestId }` | Measure one service in a front tab, so the person can sign in. |
 
@@ -53,7 +54,7 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 
 | Service | Also | `daily[]` items |
 | --- | --- | --- |
-| `chatgpt` | `prompts`, `reasoningResponses`, `images`, `conversations`, `planType` | `{ date, prompts, reasoning, images }` |
+| `chatgpt` | `prompts`, `reasoningResponses`, `images`, `conversations`, `planType`, `failedConversations`, `reusedConversations` | `{ date, prompts, reasoning, images }` |
 | `claude` | `prompts`, `reasoningResponses`, `toolCalls`, `conversations`, `rateLimitTier`, `weeklyLimitUsedPercent`, `fiveHourLimitUsedPercent` | `{ date, prompts, reasoning, toolCalls }` |
 | `gemini` | `prompts` | `{ date, prompts }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
@@ -70,7 +71,23 @@ Things to know when using these numbers:
   marked as fully watched cannot count for hours. An item with no length (mostly
   Shorts and ads) counts for 45 seconds at most. `videos` are over a minute
   long; everything else is under `shorts`.
+- ChatGPT has no message total, so every chat from the last 30 days has to be
+  read, and ChatGPT refuses reads past an allowance that refills slowly. When
+  `failedConversations` is above zero the totals are too low: show the result
+  as incomplete and offer to measure again later. Each run picks up where the
+  last one stopped (see below), so a few tries complete it.
 - The numbers are measured in the person's own browser. Nothing proves them.
+
+## What the extension remembers
+
+For ChatGPT it keeps, per chat, the counts it made (prompts, reasoning answers
+and images per day) and when that chat last changed. A chat that has not changed
+is not read again. This is what lets a run that ChatGPT cut short be finished by
+the next one, and makes a monthly re-measure read only that month's chats.
+
+It holds numbers only, never titles or text. It stays in the extension's own
+storage on the person's computer and is never sent to the site. The site can
+have it deleted with a `forget` message, and removing the extension deletes it.
 
 ## How it is put together
 
