@@ -18,7 +18,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://offset-website.itsian123.workers.dev/*",
+        "https://*.itsian123.workers.dev/*",
         "https://offset-website-kappa.vercel.app/*",
         "https://offset-website-git-step-1-estimate-tarter1.vercel.app/*",
         "http://localhost/*",
