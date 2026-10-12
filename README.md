@@ -1,6 +1,6 @@
 # Offset browser extension
 
-Measures how much a person uses ChatGPT, Claude, Gemini and YouTube, so the
+Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, DoorDash and Uber Eats, so the
 site can work out their footprint from real numbers instead of an estimate.
 
 The person installs it once. After that the site can ask it to measure, and it
@@ -57,6 +57,8 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 | `chatgpt` | `prompts`, `reasoningResponses`, `images`, `conversations`, `planType`, `failedConversations`, `reusedConversations`, `history` | `{ date, prompts, reasoning, images }` |
 | `claude` | `prompts`, `reasoningResponses`, `toolCalls`, `conversations`, `rateLimitTier`, `weeklyLimitUsedPercent`, `fiveHourLimitUsedPercent`, `failedConversations`, `history` | `{ date, prompts, reasoning, toolCalls }` |
 | `gemini` | `prompts` | `{ date, prompts }` |
+| `doordash` | `orders`, `deliveries`, `pickups`, `groceryOrders`, `items`, `history` | `{ date, orders, deliveries, pickups, groceryOrders, items }` |
+| `ubereats` | `orders`, `deliveries`, `pickups`, `items`, `history` | `{ date, orders, deliveries, pickups, items }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
 
 Things to know when using these numbers:
@@ -119,3 +121,12 @@ services do not document, so one can stop working when its service changes.
 ## Licence
 
 MIT. See `LICENSE`.
+
+## Food delivery
+
+DoorDash and Uber Eats return orders, not energy. A delivery is a courier trip;
+a pickup is not. `items` is how many things were in the orders. `history` holds
+`firstOrder` and `monthly[]` of `{ month, orders }` for every order the account
+has made, which is cheap to read because both sites list all past orders.
+Cancelled orders are left out. No restaurant, item name, price or address leaves
+the page.

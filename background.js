@@ -15,6 +15,8 @@ const SERVICES = {
   claude: { url: 'https://claude.ai/new', host: 'claude.ai', script: 'providers/claude-usage.js' },
   youtube: { url: 'https://myactivity.google.com/product/youtube', host: 'myactivity.google.com', script: 'providers/youtube-activity.js' },
   gemini: { url: 'https://myactivity.google.com/product/gemini', host: 'myactivity.google.com', script: 'providers/gemini-activity.js' },
+  doordash: { url: 'https://www.doordash.com/orders', host: 'www.doordash.com', script: 'providers/doordash-orders.js' },
+  ubereats: { url: 'https://www.ubereats.com/orders', host: 'www.ubereats.com', script: 'providers/ubereats-orders.js' },
 };
 
 // Long enough for someone to sign in, including two-step checks.

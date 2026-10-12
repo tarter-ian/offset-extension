@@ -30,7 +30,7 @@
     </table>
 
     <script>
-      const NAMES = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', youtube: 'YouTube' };
+      const NAMES = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', youtube: 'YouTube', doordash: 'DoorDash', ubereats: 'Uber Eats' };
       const WHY = { closed: 'tab was closed', timeout: 'took too long', unavailable: 'extension did not answer', denied: 'you did not allow it' };
       const status = document.getElementById('status');
       const all = document.getElementById('all');
@@ -46,6 +46,10 @@
       function summary(service, u) {
         const n = (x) => Number(x || 0).toLocaleString('en-US');
         if (service === 'youtube') return `${n(u.videos)} videos and ${n(u.shorts)} Shorts, about ${n(Math.round(u.watchedHours))} hours, in ${u.windowDays} days${u.truncated ? ". Incomplete: stopped early" : ""}`;
+        if (service === 'doordash' || service === 'ubereats') {
+          const all = u.history ? `, ${n(u.history.monthly.reduce((t, m) => t + m.orders, 0))} since ${u.history.firstOrder}` : '';
+          return `${n(u.orders)} orders (${n(u.deliveries)} delivered) in ${u.windowDays} days${all}${u.truncated ? '. Incomplete: stopped early' : ''}`;
+        }
         const images = u.images ? ` and ${n(u.images)} images` : '';
         const short = u.failedConversations ? `. Incomplete: ${n(u.failedConversations)} chats not read yet, so this is too low. Measure again later and it carries on from here` : u.truncated ? ". Incomplete: stopped early" : "";
         return `${n(u.prompts)} prompts${images} in ${u.windowDays} days${short}`;

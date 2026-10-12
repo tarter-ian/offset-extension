@@ -6,6 +6,8 @@ const SERVICES = {
   claude: { name: 'Claude', site: 'claude.ai', reads: 'How many prompts you sent each day, and how much of your plan limit is used.' },
   gemini: { name: 'Gemini', site: 'myactivity.google.com', reads: 'How many Gemini prompts Google recorded each day.' },
   youtube: { name: 'YouTube', site: 'myactivity.google.com', reads: 'How many videos you watched each day and for how long.' },
+  doordash: { name: 'DoorDash', site: 'www.doordash.com', reads: 'How many orders you placed each day, and how many items.' },
+  ubereats: { name: 'Uber Eats', site: 'www.ubereats.com', reads: 'How many orders you placed each day, and how many items.' },
 };
 
 const id = new URLSearchParams(location.search).get('id');

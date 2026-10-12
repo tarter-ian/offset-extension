@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Offset: measure my usage",
-  "version": "0.8.0",
-  "description": "Counts how much you use ChatGPT, Claude, Gemini and YouTube, so Offset can work out your footprint. Only counts and dates are shared, never your chats or history.",
+  "version": "0.9.0",
+  "description": "Counts how much you use ChatGPT, Claude, Gemini, YouTube, DoorDash and Uber Eats, so Offset can work out your footprint. Only counts and dates are shared, never your chats, history or orders.",
   "permissions": [
     "scripting",
     "storage"
@@ -10,7 +10,9 @@
   "optional_host_permissions": [
     "https://chatgpt.com/*",
     "https://claude.ai/*",
-    "https://myactivity.google.com/*"
+    "https://myactivity.google.com/*",
+    "https://www.doordash.com/*",
+    "https://www.ubereats.com/*"
   ],
   "background": {
     "service_worker": "background.js"
