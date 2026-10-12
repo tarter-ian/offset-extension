@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Offset: measure my usage",
-  "version": "0.16.0",
-  "description": "Counts how much you use AI, video, food delivery, shopping and ride services you are signed in to, so Offset can work out your footprint. Only counts and dates are shared.",
+  "version": "0.17.0",
+  "description": "Counts how much you use AI, video, food delivery, shopping and ride apps, so Offset can work out your footprint. Counts only.",
+  "homepage_url": "https://github.com/tarter-ian/offset-extension",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "scripting",
     "storage"

@@ -194,3 +194,11 @@ ChatGPT does not say whether they include input re-read from a cache. The same
 totals have a field for chat turns (`chatTurns`, `chatTurnsLifetime`), which
 ChatGPT leaves at zero today; if it starts filling it in, chats would no longer
 need to be read one by one. `agentic` is null when the account has no profile.
+
+## Publishing to the Chrome Web Store
+
+`node store/build.mjs` writes `dist/offset-extension-<version>.zip`, the file to
+upload. It leaves out `demo/`, `store/` and this README, and its manifest lists
+only the site's real addresses. `store/listing.md` has the text for every field
+of the store's forms, including the reason for each permission.
+`store/make-icons.mjs icons` redraws the icons.
