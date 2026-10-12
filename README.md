@@ -1,6 +1,6 @@
 # Offset browser extension
 
-Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, DoorDash, Uber Eats and Amazon, so the
+Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, Netflix, DoorDash, Uber Eats, Amazon and Uber, so the
 site can work out their footprint from real numbers instead of an estimate.
 
 The person installs it once. After that the site can ask it to measure, and it
@@ -60,6 +60,8 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 | `doordash` | `orders`, `deliveries`, `pickups`, `groceryOrders`, `items`, `history` | `{ date, orders, deliveries, pickups, groceryOrders, items }` |
 | `ubereats` | `orders`, `deliveries`, `pickups`, `items`, `history` | `{ date, orders, deliveries, pickups, items }` |
 | `amazon` | `orders`, `items`, `history` | `{ date, orders, items }` |
+| `uber` | `rides`, `miles`, `minutes`, `history`, `failedTrips` | `{ date, rides, miles, minutes }` |
+| `netflix` | `titles`, `titlesEver`, `unreadRows` | `{ date, titles }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
 
 Things to know when using these numbers:
@@ -141,3 +143,20 @@ months of Amazon's "past 3 months" view, and the oldest of them may be partial.
 Amazon gives the day an order was placed, not the time. Cancelled orders are
 left out; returned ones are not. No product name, price or address leaves the
 page.
+
+## Uber
+
+Uber returns rides, miles and minutes per day. The trip list is one request, but
+each trip's distance is one request more, so distances are read only for trips
+in the last 30 days. `history.monthly` counts every ride the account has
+taken, by month; the list shows no year, so the year is worked out by walking
+back through it. Distances are converted to miles. Cancelled trips are left out.
+No address, route, driver or price leaves the page.
+
+## Netflix
+
+Netflix returns titles per day: one for each episode or film started on the
+profile that is active. Netflix gives no watch time, so the site has to assume a
+length per title. It presses the page's "Show More" button until the list
+reaches back 30 days. `titlesEver` is the size of that profile's whole history.
+No title leaves the page.

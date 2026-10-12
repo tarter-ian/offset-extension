@@ -9,6 +9,8 @@ const SERVICES = {
   doordash: { name: 'DoorDash', site: 'www.doordash.com', reads: 'How many orders you placed each day, and how many items.' },
   ubereats: { name: 'Uber Eats', site: 'www.ubereats.com', reads: 'How many orders you placed each day, and how many items.' },
   amazon: { name: 'Amazon', site: 'www.amazon.com', reads: 'How many orders you placed each day, and how many items. Not what you bought.' },
+  uber: { name: 'Uber', site: 'riders.uber.com', reads: 'How many rides you took each day, and how far. Not where you went.' },
+  netflix: { name: 'Netflix', site: 'www.netflix.com', reads: 'How many titles you watched each day. Not which ones.' },
 };
 
 const id = new URLSearchParams(location.search).get('id');

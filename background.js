@@ -18,6 +18,8 @@ const SERVICES = {
   doordash: { url: 'https://www.doordash.com/orders', host: 'www.doordash.com', script: 'providers/doordash-orders.js' },
   ubereats: { url: 'https://www.ubereats.com/orders', host: 'www.ubereats.com', script: 'providers/ubereats-orders.js' },
   amazon: { url: 'https://www.amazon.com/your-orders/orders?timeFilter=months-3&startIndex=0', host: 'www.amazon.com', script: 'providers/amazon-orders.js' },
+  uber: { url: 'https://riders.uber.com/trips', host: 'riders.uber.com', script: 'providers/uber-rides.js' },
+  netflix: { url: 'https://www.netflix.com/viewingactivity', host: 'www.netflix.com', script: 'providers/netflix-activity.js' },
 };
 
 // Long enough for someone to sign in, including two-step checks.
