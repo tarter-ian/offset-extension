@@ -35,6 +35,7 @@ messages on the page's origin.
 | `{ type: 'ping' }` | Is the extension installed? |
 | `{ type: 'forget' }` | Delete the per-chat counts the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
 | `{ type: 'measure-all', requestId, services? }` | Measure every service, or the ones listed, in a separate minimized window. |
+| `{ type: 'measure-all', ..., openLogins: true }` | As above, and the login page of each signed-out service is brought to the person: its tab moves beside the site, the first is put in front, and each closes itself once it has counted. Answered with `login-needed` for those services. Ask only for services the person says they use, or a new visitor gets a tab for every service. |
 | `{ type: 'measure', service, requestId }` | Measure one service in a front tab, so the person can sign in. |
 
 | Extension sends (`source: 'offset-extension'`) | Meaning |
@@ -42,6 +43,7 @@ messages on the page's origin.
 | `{ type: 'ready', version }` | Installed. Sent on page load and in answer to `ping`. |
 | `{ type: 'started', requestId, services, needsPermission }` | Under way. `needsPermission` lists services the person is being asked to allow first. |
 | `{ type: 'counting', service, requestId }` | The person allowed this service and its count has begun. |
+| `{ type: 'login-needed', service, requestId }` | With `openLogins`: this service's login page is now open in a tab beside the site. `usage` follows once the person signs in; `error: 'closed'` if they close the tab. |
 | `{ type: 'usage', service, requestId, usage }` | One service's counts. |
 | `{ type: 'error', service, requestId, error }` | `signed-out`, `denied`, `closed`, `timeout`, `reload-page` (the extension was reloaded after the page loaded; refresh the page) or `unavailable`. |
 
@@ -59,7 +61,7 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 | `gemini` | `prompts` | `{ date, prompts }` |
 | `doordash` | `orders`, `deliveries`, `pickups`, `groceryOrders`, `items`, `history` | `{ date, orders, deliveries, pickups, groceryOrders, items }` |
 | `ubereats` | `orders`, `deliveries`, `pickups`, `items`, `history` | `{ date, orders, deliveries, pickups, items }` |
-| `amazon` | `orders`, `items`, `history` | `{ date, orders, items }` |
+| `amazon` | `orders`, `items`, `itemsByKind`, `history` | `{ date, orders, items }` |
 | `uber` | `rides`, `miles`, `minutes`, `history`, `failedTrips` | `{ date, rides, miles, minutes }` |
 | `netflix` | `titles`, `titlesEver`, `unreadRows` | `{ date, titles }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
@@ -136,7 +138,11 @@ the page.
 
 ## Amazon
 
-Amazon returns orders and items, not what was bought. It is read from the
+Amazon returns orders and items, and `itemsByKind`: how many of the items fall
+under `electronics`, `clothing`, `books_media`, `beauty_health`, `food`,
+`toys_sports`, `home` or `other`. Each item is sorted in the page from its name
+by keyword, so the split is rough, and only the tally leaves. It does not return
+what was bought. It is read from the
 "Your Orders" pages as Amazon shows them, ten orders at a time, so the tab moves
 through a few pages while it counts. `history.monthly` covers only the three
 months of Amazon's "past 3 months" view, and the oldest of them may be partial.

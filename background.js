@@ -7,6 +7,9 @@
 //   measure-all  Every service at once, in a separate minimized window the person
 //                never has to look at. A service they are not signed in to is
 //                reported as "signed-out" and its tab is closed.
+//                With openLogins, its login page is brought to the person
+//                instead: the tab moves beside the site, the first such tab is
+//                put in front, and each closes itself once it has counted.
 //   measure      One service, in a tab brought to the front, so the person can
 //                sign in. Counting starts once they have.
 
@@ -40,11 +43,55 @@ async function finish(tabId, job, message, closeTab = true) {
   await dropJob(tabId);
   chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
   if (closeTab) chrome.tabs.remove(tabId).catch(() => {});
-  // A tab the person was working in goes back to the site; background ones never took the screen.
-  if (job.front) chrome.tabs.update(job.siteTabId, { active: true }).catch(() => {});
+  // A tab the person was working in hands over to the next login that is
+  // waiting, or goes back to the site; background ones never took the screen.
+  if (job.front) {
+    const next = await waitingLogin(job.siteTabId);
+    chrome.tabs.update(next ?? job.siteTabId, { active: true }).catch(() => {});
+  }
 }
 
-const newJob = (service, front, requestId, siteTab) => ({ service, front, requestId, siteTabId: siteTab.id, startedAt: Date.now() });
+const newJob = (service, front, requestId, siteTab, openLogins = false) => ({
+  service,
+  front,
+  requestId,
+  siteTabId: siteTab.id,
+  siteWindowId: siteTab.windowId,
+  openLogins,
+  startedAt: Date.now(),
+});
+
+// The tab of another service still waiting for this site's person to sign in, if any.
+async function waitingLogin(siteTabId) {
+  const all = await chrome.storage.session.get(null);
+  for (const [k, job] of Object.entries(all)) {
+    if (k.startsWith('job:') && job.front && job.siteTabId === siteTabId) return Number(k.slice(4));
+  }
+  return null;
+}
+
+// A background tab found its service signed out. Either report that, or, when
+// the site asked for it, bring the login page to the person: the tab moves
+// beside the site and, unless another login is already in front, takes the screen.
+async function signedOut(tabId, job) {
+  if (!job.openLogins) {
+    await finish(tabId, job, { type: 'error', error: 'signed-out' });
+    return;
+  }
+  const alreadyWaiting = await waitingLogin(job.siteTabId);
+  await setJob(tabId, { ...job, front: true, startedAt: Date.now() });
+  try {
+    await chrome.tabs.move(tabId, { windowId: job.siteWindowId, index: -1 });
+    if (alreadyWaiting === null) {
+      await chrome.tabs.update(tabId, { active: true });
+      await chrome.windows.update(job.siteWindowId, { focused: true });
+    }
+  } catch (e) {
+    await finish(tabId, { ...job, front: false }, { type: 'error', error: 'signed-out' });
+    return;
+  }
+  chrome.tabs.sendMessage(job.siteTabId, { type: 'login-needed', service: job.service, requestId: job.requestId }).catch(() => {});
+}
 
 // One service in a tab beside the site, in front, so the person can sign in.
 async function startInFront(service, requestId, siteTab) {
@@ -54,7 +101,7 @@ async function startInFront(service, requestId, siteTab) {
 
 // Every service in a window of its own, minimized, so the site keeps the
 // screen and the keyboard. The window goes away when its last tab closes.
-async function startInBackground(services, requestId, siteTab) {
+async function startInBackground(services, requestId, siteTab, openLogins) {
   const urls = services.map((s) => SERVICES[s].url);
   let tabs;
   try {
@@ -69,7 +116,7 @@ async function startInBackground(services, requestId, siteTab) {
     tabs = [];
     for (const url of urls) tabs.push(await chrome.tabs.create({ url, active: false, windowId: siteTab.windowId }));
   }
-  for (let i = 0; i < services.length; i++) await setJob(tabs[i].id, newJob(services[i], false, requestId, siteTab));
+  for (let i = 0; i < services.length; i++) await setJob(tabs[i].id, newJob(services[i], false, requestId, siteTab, openLogins));
 }
 
 async function inject(tabId, job) {
@@ -108,7 +155,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
   // page on another host shows up here as no url at all.
   const onService = !!tab.url && new URL(tab.url).host === SERVICES[job.service].host;
   if (onService) await inject(tabId, job);
-  else if (!job.front) await finish(tabId, job, { type: 'error', error: 'signed-out' });
+  else if (!job.front) await signedOut(tabId, job);
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
@@ -125,9 +172,9 @@ const allowed = (service) => chrome.permissions.contains({ origins: [origin(serv
 const PERMIT_PAGE = chrome.runtime.getURL('permit.html');
 const askKey = (id) => `ask:${id}`;
 
-function begin(services, front, requestId, siteTab) {
+function begin(services, front, requestId, siteTab, openLogins) {
   if (!services.length) return Promise.resolve();
-  return front ? startInFront(services[0], requestId, siteTab) : startInBackground(services, requestId, siteTab);
+  return front ? startInFront(services[0], requestId, siteTab) : startInBackground(services, requestId, siteTab, openLogins);
 }
 
 function tellSite(siteTabId, message) {
@@ -170,11 +217,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const ok = await Promise.all(services.map(allowed));
       const ready = services.filter((s, i) => ok[i]);
       const missing = services.filter((s, i) => !ok[i]);
-      await begin(ready, front, message.requestId, sender.tab);
+      const openLogins = !front && message.openLogins === true;
+      await begin(ready, front, message.requestId, sender.tab, openLogins);
       if (missing.length) {
         const id = crypto.randomUUID();
         // Saved before the window opens, so the page finds it however fast it loads.
-        const ask = { missing, front, requestId: message.requestId, siteTabId: sender.tab.id, siteWindowId: sender.tab.windowId, windowId: null };
+        const ask = { missing, front, openLogins, requestId: message.requestId, siteTabId: sender.tab.id, siteWindowId: sender.tab.windowId, windowId: null };
         await chrome.storage.session.set({ [askKey(id)]: ask });
         const win = await chrome.windows.create({ url: `${PERMIT_PAGE}?id=${id}`, type: 'popup', width: 480, height: 620, focused: true });
         await chrome.storage.session.set({ [askKey(id)]: { ...ask, windowId: win.id } });
@@ -200,7 +248,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       // Lets the site move these from "waiting for permission" to "counting".
       for (const service of granted) tellSite(ask.siteTabId, { type: 'counting', service, requestId: ask.requestId });
-      await begin(granted, ask.front, ask.requestId, siteTab);
+      await begin(granted, ask.front, ask.requestId, siteTab, ask.openLogins);
       chrome.windows.remove(ask.windowId).catch(() => {});
       if (!ask.front) chrome.windows.update(ask.siteWindowId, { focused: true }).catch(() => {});
     })();
@@ -219,7 +267,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await finish(tabId, job, { type: 'usage', usage });
     } else if (message.type === 'idle' && !job.front) {
       // The service's page loaded but counting never began: not signed in.
-      await finish(tabId, job, { type: 'error', error: 'signed-out' });
+      await signedOut(tabId, job);
     }
   })();
 });

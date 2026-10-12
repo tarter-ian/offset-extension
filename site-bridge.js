@@ -4,6 +4,8 @@
 // Page -> extension:  window.postMessage({ source: 'offset-site', type: 'ping' })
 //                     window.postMessage({ source: 'offset-site', type: 'measure-all', requestId, services? })
 //                       every service at once in background tabs; signed-out ones come back as an error
+//                       with openLogins: true, a signed-out service's login page is brought to the
+//                       person instead (answered with 'login-needed', then 'usage' once they sign in)
 //                     window.postMessage({ source: 'offset-site', type: 'measure', service, requestId })
 //                       one service in a front tab, so the person can sign in
 //                     window.postMessage({ source: 'offset-site', type: 'forget' })
@@ -49,7 +51,7 @@
         toPage({ type: chrome.runtime.lastError || !res ? 'error' : 'forgotten', error: res ? undefined : 'unavailable' });
       });
     } else if (m.type === 'measure' || m.type === 'measure-all') {
-      var request = { type: m.type, service: m.service, services: m.services, requestId: m.requestId };
+      var request = { type: m.type, service: m.service, services: m.services, openLogins: m.openLogins === true, requestId: m.requestId };
       chrome.runtime.sendMessage(request, function (res) {
         var failed = chrome.runtime.lastError || !res || !res.ok;
         toPage({
@@ -65,7 +67,7 @@
   });
 
   chrome.runtime.onMessage.addListener(function (message) {
-    if (message.type === 'usage' || message.type === 'error' || message.type === 'counting') toPage(message);
+    if (message.type === 'usage' || message.type === 'error' || message.type === 'counting' || message.type === 'login-needed') toPage(message);
   });
 
   ready();

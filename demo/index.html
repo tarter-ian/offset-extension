@@ -25,6 +25,7 @@
     <p class="muted">Stands in for the Offset site. Measure everything at once, or one service at a time.</p>
     <p id="status">Looking for the extension...</p>
     <button id="all" disabled>Measure everything</button>
+    <p><label><input type="checkbox" id="logins" checked /> Bring me the login page of anything I am signed out of</label></p>
     <table>
       <tbody id="rows"></tbody>
     </table>
@@ -62,7 +63,7 @@
       function measure(services) {
         for (const s of services) state[s] = { kind: 'counting', text: 'Counting...' };
         draw();
-        send({ type: 'measure-all', services, requestId: crypto.randomUUID() });
+        send({ type: 'measure-all', services, openLogins: document.getElementById('logins').checked, requestId: crypto.randomUUID() });
         clearTimeout(noAnswer);
         // The extension answers "started" at once. Silence means this page has lost
         // touch with it, which happens when the extension was reloaded after the page.
@@ -119,6 +120,9 @@
           draw();
         } else if (m.type === 'counting' && state[m.service]) {
           state[m.service] = { kind: 'counting', text: 'Counting...' };
+          draw();
+        } else if (m.type === 'login-needed' && state[m.service]) {
+          state[m.service] = { kind: 'login', text: 'Its login page is open in a tab. Log in there and it counts by itself.' };
           draw();
         } else if (m.type === 'usage') {
           state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };

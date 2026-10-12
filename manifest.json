@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Offset: measure my usage",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Counts how much you use AI, video, food delivery, shopping and ride services you are signed in to, so Offset can work out your footprint. Only counts and dates are shared.",
   "permissions": [
     "scripting",
