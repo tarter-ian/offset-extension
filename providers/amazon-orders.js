@@ -1,7 +1,8 @@
 // Counting script: Amazon orders, last 30 days, plus orders per month for the last three.
 // Reads the person's own "Your Orders" pages as Amazon shows them, ten orders at a
 // time. Each item is sorted into a broad kind (electronics, clothing and so on) in
-// the page. Only counts and dates leave the page; no product names, prices or addresses.
+// the page. Counts, dates and order totals leave the page; no product names, item
+// prices or addresses.
 (function () {
   if (window.__offsetAmazonOrders) return;
   window.__offsetAmazonOrders = { started: false, done: false };
@@ -71,9 +72,13 @@
   function readCard(card) {
     var header = card.querySelectorAll('.order-header__header-list-item');
     var date = null;
-    for (var i = 0; i < header.length && !date; i++) {
-      var m = header[i].textContent.match(MONTH);
+    var total = 0;
+    for (var i = 0; i < header.length; i++) {
+      var m = !date && header[i].textContent.match(MONTH);
       if (m) date = m[0].replace(/\s+/g, ' ');
+      // The order total, as Amazon prints it in the card's header: "$39.86".
+      var money = !total && header[i].textContent.match(/\$\s*([\d,]+(?:\.\d{2})?)/);
+      if (money) total = parseFloat(money[1].replace(/,/g, '')) || 0;
     }
     if (!date) return null;
     var titleNodes = card.querySelectorAll('.yohtmlc-product-title');
@@ -101,6 +106,7 @@
     return {
       at: Date.parse(date),
       items: items,
+      total: total,
       kinds: kinds,
       cancelled: /cancell?ed/i.test(status),
     };
@@ -114,6 +120,7 @@
     var days = {};
     var months = {};
     var kinds = {};
+    var spendKinds = {};
     orders.forEach(function (o) {
       if (!o.at || o.cancelled) return;
       var d = new Date(o.at);
@@ -122,17 +129,26 @@
       months[month] = (months[month] || 0) + 1;
       // Amazon gives the day an order was placed, not the time, so compare whole days.
       if (o.at < since - 86400000) return;
-      var day = days[date] || (days[date] = { date: date, orders: 0, items: 0 });
+      var day = days[date] || (days[date] = { date: date, orders: 0, items: 0, spend: 0 });
       day.orders++;
       day.items += o.items;
+      day.spend += o.total || 0;
       Object.keys(o.kinds || {}).forEach(function (k) {
         kinds[k] = (kinds[k] || 0) + o.kinds[k];
+        // Amazon's list gives one total per order, not a price per item, so an
+        // order's total is shared out evenly over its items.
+        spendKinds[k] = (spendKinds[k] || 0) + ((o.total || 0) * o.kinds[k]) / (o.items || 1);
       });
     });
-    var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
+    var cents = function (n) { return Math.round(n * 100) / 100; };
+    var daily = Object.keys(days).sort().map(function (k) {
+      days[k].spend = cents(days[k].spend);
+      return days[k];
+    });
     var sum = function (key) {
       return daily.reduce(function (t, d) { return t + d[key]; }, 0);
     };
+    Object.keys(spendKinds).forEach(function (k) { spendKinds[k] = cents(spendKinds[k]); });
     return {
       service: 'amazon',
       windowDays: WINDOW_DAYS,
@@ -142,6 +158,10 @@
       // Items in the window by broad kind: electronics, clothing, books_media,
       // beauty_health, food, toys_sports, home, other. Sorted by keyword, so rough.
       itemsByKind: kinds,
+      // US dollars, from each order's total (so it includes tax and shipping).
+      spend: cents(sum('spend')),
+      spendByKind: spendKinds,
+      currency: 'USD',
       activeDays: daily.length,
       daily: daily,
       // The three months Amazon's "past 3 months" view covers; the oldest may be partial.

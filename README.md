@@ -61,7 +61,7 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 | `gemini` | `prompts` | `{ date, prompts }` |
 | `doordash` | `orders`, `deliveries`, `pickups`, `groceryOrders`, `items`, `history` | `{ date, orders, deliveries, pickups, groceryOrders, items }` |
 | `ubereats` | `orders`, `deliveries`, `pickups`, `items`, `history` | `{ date, orders, deliveries, pickups, items }` |
-| `amazon` | `orders`, `items`, `itemsByKind`, `history` | `{ date, orders, items }` |
+| `amazon` | `orders`, `items`, `itemsByKind`, `spend`, `spendByKind`, `currency`, `history` | `{ date, orders, items, spend }` |
 | `uber` | `rides`, `miles`, `minutes`, `history`, `failedTrips` | `{ date, rides, miles, minutes }` |
 | `netflix` | `titles`, `titlesEver`, `unreadRows` | `{ date, titles }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
@@ -146,9 +146,12 @@ what was bought. It is read from the
 "Your Orders" pages as Amazon shows them, ten orders at a time, so the tab moves
 through a few pages while it counts. `history.monthly` covers only the three
 months of Amazon's "past 3 months" view, and the oldest of them may be partial.
-Amazon gives the day an order was placed, not the time. Cancelled orders are
-left out; returned ones are not. No product name, price or address leaves the
-page.
+`spend` is in US dollars, from each order's total as Amazon prints it, so it
+includes tax and shipping. Amazon's list has no price per item, so `spendByKind`
+shares each order's total evenly over its items; treat it as rough. Amazon gives
+the day an order was placed, not the time. Cancelled orders are
+left out; returned ones are not. No product name, item price or address leaves
+the page.
 
 ## Uber
 

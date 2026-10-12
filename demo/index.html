@@ -49,7 +49,7 @@
         if (service === 'youtube') return `${n(u.videos)} videos and ${n(u.shorts)} Shorts, about ${n(Math.round(u.watchedHours))} hours, in ${u.windowDays} days${u.truncated ? ". Incomplete: stopped early" : ""}`;
         if (service === 'uber') return `${n(u.rides)} rides, ${n(u.miles)} miles in ${u.windowDays} days${u.failedTrips ? `. Incomplete: ${n(u.failedTrips)} trips not read` : ''}`;
         if (service === 'netflix') return `${n(u.titles)} titles in ${u.windowDays} days${u.truncated ? '. Incomplete: stopped early' : ''}`;
-        if (service === 'amazon') return `${n(u.orders)} orders, ${n(u.items)} items in ${u.windowDays} days${u.truncated ? '. Incomplete: stopped early' : ''}`;
+        if (service === 'amazon') return `${n(u.orders)} orders, ${n(u.items)} items, $${n(u.spend)} in ${u.windowDays} days${u.truncated ? '. Incomplete: stopped early' : ''}`;
         if (service === 'doordash' || service === 'ubereats') {
           const all = u.history ? `, ${n(u.history.monthly.reduce((t, m) => t + m.orders, 0))} since ${u.history.firstOrder}` : '';
           return `${n(u.orders)} orders (${n(u.deliveries)} delivered) in ${u.windowDays} days${all}${u.truncated ? '. Incomplete: stopped early' : ''}`;

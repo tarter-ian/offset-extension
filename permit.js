@@ -8,7 +8,7 @@ const SERVICES = {
   youtube: { name: 'YouTube', site: 'myactivity.google.com', reads: 'How many videos you watched each day and for how long.' },
   doordash: { name: 'DoorDash', site: 'www.doordash.com', reads: 'How many orders you placed each day, and how many items.' },
   ubereats: { name: 'Uber Eats', site: 'www.ubereats.com', reads: 'How many orders you placed each day, and how many items.' },
-  amazon: { name: 'Amazon', site: 'www.amazon.com', reads: 'How many orders and items each day, and what kind of thing each was (such as electronics or clothing). Not the products themselves.' },
+  amazon: { name: 'Amazon', site: 'www.amazon.com', reads: 'How many orders and items each day, what each order cost, and what kind of thing each item was (such as electronics or clothing). Not the products themselves.' },
   uber: { name: 'Uber', site: 'riders.uber.com', reads: 'How many rides you took each day, and how far. Not where you went.' },
   netflix: { name: 'Netflix', site: 'www.netflix.com', reads: 'How many titles you watched each day. Not which ones.' },
 };
