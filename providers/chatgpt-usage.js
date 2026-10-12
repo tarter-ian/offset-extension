@@ -12,7 +12,7 @@
   var PAGE = 28;
   var MAX_PAGES = 12;
   var MAX_CONVERSATIONS = 200;
-  var BATCH = 3;
+  var BATCH = 6;
 
   var sleep = function (ms) {
     return new Promise(function (r) { setTimeout(r, ms); });
@@ -192,6 +192,40 @@
     });
     var reused = chats.length - todo.length;
 
+    // Reading every chat takes a while, so the site is given a running estimate:
+    // the totals of the chats read so far, scaled up to all the chats in the
+    // window. It starts rough and becomes exact when the last chat is read.
+    var lastEstimate = null;
+    function estimate() {
+      var read = Object.keys(counted).length;
+      if (!read) return null;
+      var totals = [0, 0, 0];
+      Object.keys(counted).forEach(function (id) {
+        var d = counted[id].d;
+        Object.keys(d).forEach(function (date) {
+          if (date < sinceDate) return;
+          for (var i = 0; i < 3; i++) totals[i] += d[date][i];
+        });
+      });
+      var scale = chats.length / read;
+      lastEstimate = {
+        service: 'chatgpt',
+        windowDays: WINDOW_DAYS,
+        estimated: read < chats.length,
+        chatsRead: read,
+        chatsTotal: chats.length,
+        prompts: Math.round(totals[0] * scale),
+        reasoningResponses: Math.round(totals[1] * scale),
+        images: Math.round(totals[2] * scale),
+      };
+      return lastEstimate;
+    }
+    function tell() {
+      var e = estimate();
+      if (e && typeof window.__offsetProgress === 'function') window.__offsetProgress(e);
+    }
+    tell(); // Straight away, when earlier runs left counts behind.
+
     // ChatGPT turns requests away past its limit. A chat that could not be read
     // is tried again, one at a time, so the total is not short.
     for (var pass = 0; pass < 4 && todo.length && (pass === 0 || heldMs < MAX_HOLD_MS); pass++) {
@@ -211,6 +245,7 @@
           if (!c || !c.mapping) missed.push(group[i]);
           else counted[group[i].id] = { u: group[i].updated, d: countChat(c, since, now) };
         });
+        tell();
       }
       todo = missed;
     }
@@ -252,6 +287,8 @@
       truncated: truncated,
       // Chats in the window that could not be read this time. Above zero, the totals are too low.
       failedConversations: todo.length,
+      // When some chats could not be read: the totals scaled up from the ones that were.
+      estimate: todo.length && estimate() ? { prompts: lastEstimate.prompts, reasoningResponses: lastEstimate.reasoningResponses, images: lastEstimate.images, chatsRead: lastEstimate.chatsRead, chatsTotal: lastEstimate.chatsTotal } : null,
       reusedConversations: reused,
       history: past,
       // For the extension to keep for next time. It removes this before anything goes to the site.

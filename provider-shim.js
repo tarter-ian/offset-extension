@@ -21,6 +21,11 @@
     },
   };
 
+  // A count that takes a while can report a running estimate through this.
+  window.__offsetProgress = function (data) {
+    send('progress', data);
+  };
+
   // Each counting script starts only once it sees a signed-in session. If none
   // has started after a while, say so, so a background tab is not left waiting.
   var STATES = ['__offsetChatgptUsage', '__offsetClaudeUsage', '__offsetYoutubeActivity', '__offsetGeminiActivity', '__offsetDoordashOrders', '__offsetUbereatsOrders', '__offsetAmazonOrders', '__offsetUberRides', '__offsetNetflixActivity'];

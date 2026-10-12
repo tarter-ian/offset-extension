@@ -44,6 +44,7 @@ messages on the page's origin.
 | `{ type: 'started', requestId, services, needsPermission }` | Under way. `needsPermission` lists services the person is being asked to allow first. |
 | `{ type: 'counting', service, requestId }` | The person allowed this service and its count has begun. |
 | `{ type: 'login-needed', service, requestId }` | With `openLogins`: this service's login page is now open in a tab beside the site. `usage` follows once the person signs in; `error: 'closed'` if they close the tab. |
+| `{ type: 'progress', service, requestId, usage }` | A running estimate while a slow count is under way (ChatGPT only today). `usage` has `estimated`, `chatsRead`, `chatsTotal`, and `prompts`, `reasoningResponses`, `images` scaled up from the chats read so far. It is rough until most chats are read; the final `usage` replaces it. |
 | `{ type: 'usage', service, requestId, usage }` | One service's counts. |
 | `{ type: 'error', service, requestId, error }` | `signed-out`, `denied`, `closed`, `timeout`, `reload-page` (the extension was reloaded after the page loaded; refresh the page) or `unavailable`. |
 

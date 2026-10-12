@@ -15,6 +15,9 @@
 //                       needsPermission lists services the person is now being asked to allow
 //                     { source: 'offset-extension', type: 'counting', service, requestId }
 //                       the person allowed this service and its count has begun
+//                     { source: 'offset-extension', type: 'progress', service, requestId, usage }
+//                       a running estimate while a slow count (ChatGPT) is under way: usage.estimated,
+//                       chatsRead, chatsTotal, and prompts / images scaled up from the chats read so far
 //                     { source: 'offset-extension', type: 'usage' | 'error', service, requestId, usage?, error? }
 //                       error is 'signed-out', 'denied', 'closed', 'timeout', 'reload-page' or 'unavailable'
 //                       'reload-page': the extension was reloaded or updated after this page loaded,
@@ -67,7 +70,7 @@
   });
 
   chrome.runtime.onMessage.addListener(function (message) {
-    if (message.type === 'usage' || message.type === 'error' || message.type === 'counting' || message.type === 'login-needed') toPage(message);
+    if (message.type === 'usage' || message.type === 'error' || message.type === 'counting' || message.type === 'progress' || message.type === 'login-needed') toPage(message);
   });
 
   ready();

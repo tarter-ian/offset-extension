@@ -7,6 +7,6 @@
     if (event.source !== window || event.origin !== location.origin) return;
     var m = event.data;
     if (!m || m.source !== 'offset-provider') return;
-    if (m.type === 'done' || m.type === 'idle') chrome.runtime.sendMessage({ type: m.type, data: m.data });
+    if (m.type === 'done' || m.type === 'idle' || m.type === 'progress') chrome.runtime.sendMessage({ type: m.type, data: m.data });
   });
 })();

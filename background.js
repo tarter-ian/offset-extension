@@ -39,7 +39,11 @@ const dropJob = (tabId) => chrome.storage.session.remove(key(tabId));
 // on this computer between runs. See the "remembered" note in the counting scripts.
 const memoryKey = (service) => `memory:${service}`;
 
+// Tabs this worker is closing itself, so their closing is not reported as the person's doing.
+const closing = new Set();
+
 async function finish(tabId, job, message, closeTab = true) {
+  if (closeTab) closing.add(tabId);
   await dropJob(tabId);
   chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
   if (closeTab) chrome.tabs.remove(tabId).catch(() => {});
@@ -159,6 +163,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  if (closing.delete(tabId)) return;
   const job = await getJob(tabId);
   if (job) await finish(tabId, job, { type: 'error', error: 'closed' }, false);
 });
@@ -265,6 +270,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const { remember, ...usage } = message.data;
       if (remember && typeof remember === 'object') await chrome.storage.local.set({ [memoryKey(job.service)]: remember });
       await finish(tabId, job, { type: 'usage', usage });
+    } else if (message.type === 'progress' && message.data && message.data.service === job.service) {
+      // A running estimate while a slow count is still under way.
+      chrome.tabs.sendMessage(job.siteTabId, { type: 'progress', service: job.service, requestId: job.requestId, usage: message.data }).catch(() => {});
     } else if (message.type === 'idle' && !job.front) {
       // The service's page loaded but counting never began: not signed in.
       await signedOut(tabId, job);

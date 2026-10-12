@@ -121,6 +121,10 @@
         } else if (m.type === 'counting' && state[m.service]) {
           state[m.service] = { kind: 'counting', text: 'Counting...' };
           draw();
+        } else if (m.type === 'progress' && state[m.service] && state[m.service].kind === 'counting') {
+          const u = m.usage;
+          state[m.service] = { kind: 'counting', text: `About ${Number(u.prompts).toLocaleString('en-US')} prompts so far (read ${u.chatsRead} of ${u.chatsTotal} chats)...` };
+          draw();
         } else if (m.type === 'login-needed' && state[m.service]) {
           state[m.service] = { kind: 'login', text: 'Its login page is open in a tab. Log in there and it counts by itself.' };
           draw();
@@ -128,6 +132,8 @@
           state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };
           draw();
         } else if (m.type === 'error' && m.service && state[m.service]) {
+          // A late message about a tab closing must not replace a result already shown.
+          if (!working(state[m.service])) return;
           state[m.service] =
             m.error === 'signed-out' ? { kind: 'signed-out', text: '' } : { kind: 'failed', text: `Not measured: ${WHY[m.error] || m.error}` };
           draw();
