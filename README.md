@@ -54,8 +54,8 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 
 | Service | Also | `daily[]` items |
 | --- | --- | --- |
-| `chatgpt` | `prompts`, `reasoningResponses`, `images`, `conversations`, `planType`, `failedConversations`, `reusedConversations` | `{ date, prompts, reasoning, images }` |
-| `claude` | `prompts`, `reasoningResponses`, `toolCalls`, `conversations`, `rateLimitTier`, `weeklyLimitUsedPercent`, `fiveHourLimitUsedPercent` | `{ date, prompts, reasoning, toolCalls }` |
+| `chatgpt` | `prompts`, `reasoningResponses`, `images`, `conversations`, `planType`, `failedConversations`, `reusedConversations`, `history` | `{ date, prompts, reasoning, images }` |
+| `claude` | `prompts`, `reasoningResponses`, `toolCalls`, `conversations`, `rateLimitTier`, `weeklyLimitUsedPercent`, `fiveHourLimitUsedPercent`, `failedConversations`, `history` | `{ date, prompts, reasoning, toolCalls }` |
 | `gemini` | `prompts` | `{ date, prompts }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
 
@@ -76,6 +76,12 @@ Things to know when using these numbers:
   `failedConversations` is above zero the totals are too low: show the result
   as incomplete and offer to measure again later. Each run picks up where the
   last one stopped (see below), so a few tries complete it.
+- ChatGPT and Claude also send `history`: `{ firstChat, chats, chatsBeforeWindow,
+  months: { "2024-03": 12, ... }, complete }`, the chats the account still has
+  by the month each was started. It comes from the chat list alone (no chat is
+  opened), so it counts chats, not prompts, and deleted chats are missing.
+  `complete` is false when the list was longer than 5,000 chats. `history` is
+  null when the list could not be read.
 - The numbers are measured in the person's own browser. Nothing proves them.
 
 ## What the extension remembers

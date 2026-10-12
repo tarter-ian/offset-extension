@@ -1,8 +1,9 @@
 // Reclaim user script: Claude usage, last 30 days.
 // After the person signs in, counts their prompts and extended-thinking
-// responses per day in claude.ai chats, reads how much of the weekly limit is
-// used, and proves the account's plan tier. Only counts and dates leave the
-// page; no titles and no message text.
+// responses per day in claude.ai chats, notes how many chats they started each
+// month since their first, reads how much of the weekly limit is used, and
+// proves the account's plan tier. Only counts and dates leave the page; no
+// titles and no message text.
 (function () {
   if (window.__offsetClaudeUsage) return;
   window.__offsetClaudeUsage = { started: false, done: false };
@@ -56,6 +57,45 @@
     } catch (e) {
       return null;
     }
+  }
+
+  // Every chat the account still has, by the month it was started, read from
+  // the chat list only (no chat is opened). The site uses it to price past use
+  // by how the person actually used Claude, not today's rate since 2022.
+  // Dates and counts only. Deleted chats are gone and can't be counted.
+  var HISTORY_PAGE = 100;
+  var HISTORY_MAX_PAGES = 50;
+  async function history(base, since) {
+    var months = {};
+    var chats = 0;
+    var beforeWindow = 0;
+    var first = null;
+    var complete = false;
+    for (var page = 0; page < HISTORY_MAX_PAGES; page++) {
+      banner('Looking at when you started each Claude chat...');
+      var items = await getJson(base + '/chat_conversations?limit=' + HISTORY_PAGE + '&offset=' + page * HISTORY_PAGE);
+      if (!Array.isArray(items)) return null;
+      items.forEach(function (c) {
+        var ms = Date.parse(c.created_at);
+        if (!(ms > 0)) return;
+        var key = new Date(ms).toISOString().slice(0, 7);
+        months[key] = (months[key] || 0) + 1;
+        chats++;
+        if (ms < since) beforeWindow++;
+        if (first === null || ms < first) first = ms;
+      });
+      if (items.length < HISTORY_PAGE) {
+        complete = true;
+        break;
+      }
+    }
+    return {
+      firstChat: first === null ? null : new Date(first).toISOString().slice(0, 10),
+      chats: chats,
+      chatsBeforeWindow: beforeWindow,
+      months: months,
+      complete: complete,
+    };
   }
 
   async function collect(org) {
@@ -131,6 +171,8 @@
       return limits && limits[k] && typeof limits[k].utilization === 'number' ? limits[k].utilization : null;
     };
 
+    var past = await history(base, since).catch(function () { return null; });
+
     var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
     var sum = function (key) {
       return daily.reduce(function (t, d) { return t + d[key]; }, 0);
@@ -151,6 +193,7 @@
       fiveHourLimitUsedPercent: percent('five_hour'),
       truncated: truncated,
       failedConversations: failed,
+      history: past,
     };
   }
 
