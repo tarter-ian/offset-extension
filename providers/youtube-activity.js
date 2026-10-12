@@ -2,6 +2,8 @@
 // Reads the person's YouTube history from Google My Activity, which records when
 // each video was started, how long it is and how much of it was watched. Only
 // counts and dates leave the page; no titles, channels or video ids.
+// Asked for the whole history, it reads back as far as Google has kept it and
+// adds videos and hours per month.
 (function () {
   if (window.__offsetYoutubeActivity) return;
   window.__offsetYoutubeActivity = { started: false, done: false };
@@ -9,7 +11,9 @@
 
   var WINDOW_DAYS = 30;
   var PAGE = 500;
-  var MAX_PAGES = 120;
+  var WHOLE = window.__offsetHistory === true;
+  // About 500 videos a page, one page a second.
+  var MAX_PAGES = WHOLE ? 1200 : 120;
   var ACTIVITY_URL = 'https://myactivity.google.com/product/youtube';
   // Watch time credited to an item whose length Google does not give (mostly Shorts and ads).
   var UNKNOWN_SECONDS = 45;
@@ -107,7 +111,7 @@
         var w = read(item);
         if (!w || seen[item[4]]) return;
         seen[item[4]] = true;
-        if (w.at < since) older = true;
+        if (w.at < since && !WHOLE) older = true;
         else watched.push(w);
       });
       token = result.next;
@@ -121,16 +125,23 @@
     // marked "fully watched" from counting for hours.
     watched.sort(function (a, b) { return a.at - b.at; });
     var days = {};
+    var months = {};
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
     watched.forEach(function (w, i) {
       var claimed = w.length ? (w.length * (w.percent === null ? 100 : w.percent)) / 100 : UNKNOWN_SECONDS;
       var untilNext = i + 1 < watched.length ? (watched[i + 1].at - w.at) / 1000 : claimed;
       var d = new Date(w.at);
       var date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      var hours = Math.max(0, Math.min(claimed, untilNext)) / 3600;
+      var month = months[date.slice(0, 7)] || (months[date.slice(0, 7)] = { month: date.slice(0, 7), videos: 0, shorts: 0, hours: 0 });
+      if (w.length > SHORT_SECONDS) month.videos++;
+      else month.shorts++;
+      month.hours += hours;
+      if (w.at < since) return;
       var day = days[date] || (days[date] = { date: date, videos: 0, shorts: 0, hours: 0 });
       if (w.length > SHORT_SECONDS) day.videos++;
       else day.shorts++;
-      day.hours += Math.max(0, Math.min(claimed, untilNext)) / 3600;
+      day.hours += hours;
     });
 
     var round2 = function (n) { return Math.round(n * 100) / 100; };
@@ -151,6 +162,16 @@
       watchedHours: round2(sum('hours')),
       activeDays: daily.length,
       daily: daily,
+      // Per month for as long as Google has kept the history. Only when the whole history was asked for.
+      history: WHOLE
+        ? {
+            whole: !truncated,
+            monthly: Object.keys(months).sort().map(function (m) {
+              var x = months[m];
+              return { month: x.month, videos: x.videos, shorts: x.shorts, hours: round2(x.hours) };
+            }),
+          }
+        : undefined,
       truncated: truncated,
     };
   }

@@ -12,6 +12,10 @@
 //                put in front, and each closes itself once it has counted.
 //   measure      One service, in a tab brought to the front, so the person can
 //                sign in. Counting starts once they have.
+//
+// Either can carry history: true. The counting scripts then read as far back as
+// the account goes, not just the last 30 days, and add counts per month. It
+// takes longer, so the site asks for it only when the person chooses to.
 
 const SERVICES = {
   chatgpt: { url: 'https://chatgpt.com/', host: 'chatgpt.com', script: 'providers/chatgpt-usage.js' },
@@ -55,7 +59,10 @@ async function saveResult(service, usage) {
   }
   const cutoff = new Date(Date.now() - KEEP_DAYS * 86400000).toISOString().slice(0, 10);
   for (const date of Object.keys(days)) if (date < cutoff) delete days[date];
-  await chrome.storage.local.set({ [savedKey(service)]: { usage, measuredAt, days } });
+  // A whole-history count is kept until the next one, because the usual 30-day
+  // count does not reach that far back.
+  const history = usage.history && usage.history.whole ? { ...usage.history, measuredAt } : (old && old.history) || null;
+  await chrome.storage.local.set({ [savedKey(service)]: { usage, measuredAt, days, history } });
   return measuredAt;
 }
 
@@ -65,7 +72,7 @@ async function savedResult(service) {
   const saved = (await chrome.storage.local.get(savedKey(service)))[savedKey(service)];
   if (!saved || !saved.usage) return null;
   const record = Object.keys(saved.days || {}).sort().map((date) => saved.days[date]);
-  return { usage: saved.usage, measuredAt: saved.measuredAt, record };
+  return { usage: saved.usage, measuredAt: saved.measuredAt, record, history: saved.history || null };
 }
 
 // Tabs this worker is closing itself, so their closing is not reported as the person's doing.
@@ -85,13 +92,14 @@ async function finish(tabId, job, message, closeTab = true) {
   }
 }
 
-const newJob = (service, front, requestId, siteTab, openLogins = false) => ({
+const newJob = (service, front, requestId, siteTab, openLogins = false, history = false) => ({
   service,
   front,
   requestId,
   siteTabId: siteTab.id,
   siteWindowId: siteTab.windowId,
   openLogins,
+  history,
   startedAt: Date.now(),
 });
 
@@ -128,14 +136,14 @@ async function signedOut(tabId, job) {
 }
 
 // One service in a tab beside the site, in front, so the person can sign in.
-async function startInFront(service, requestId, siteTab) {
+async function startInFront(service, requestId, siteTab, history) {
   const tab = await chrome.tabs.create({ url: SERVICES[service].url, active: true, windowId: siteTab.windowId });
-  await setJob(tab.id, newJob(service, true, requestId, siteTab));
+  await setJob(tab.id, newJob(service, true, requestId, siteTab, false, history));
 }
 
 // Every service in a window of its own, minimized, so the site keeps the
 // screen and the keyboard. The window goes away when its last tab closes.
-async function startInBackground(services, requestId, siteTab, openLogins) {
+async function startInBackground(services, requestId, siteTab, openLogins, history = false) {
   const urls = services.map((s) => SERVICES[s].url);
   let tabs;
   try {
@@ -152,7 +160,7 @@ async function startInBackground(services, requestId, siteTab, openLogins) {
     tabs = [];
     for (const url of urls) tabs.push(await chrome.tabs.create({ url, active: false, windowId: siteTab.windowId }));
   }
-  for (let i = 0; i < services.length; i++) await setJob(tabs[i].id, newJob(services[i], false, requestId, siteTab, openLogins));
+  for (let i = 0; i < services.length; i++) await setJob(tabs[i].id, newJob(services[i], false, requestId, siteTab, openLogins, history));
 }
 
 async function inject(tabId, job) {
@@ -167,11 +175,12 @@ async function inject(tabId, job) {
     await chrome.scripting.executeScript({
       target,
       world: 'MAIN',
-      func: (service, data) => {
+      func: (service, data, history) => {
         window.__offsetCache = window.__offsetCache || {};
         window.__offsetCache[service] = data;
+        window.__offsetHistory = history;
       },
-      args: [job.service, remembered],
+      args: [job.service, remembered, job.history === true],
     });
     await chrome.scripting.executeScript({ target, world: 'MAIN', files: [SERVICES[job.service].script] });
   } catch (e) {
@@ -209,9 +218,9 @@ const allowed = (service) => chrome.permissions.contains({ origins: [origin(serv
 const PERMIT_PAGE = chrome.runtime.getURL('permit.html');
 const askKey = (id) => `ask:${id}`;
 
-function begin(services, front, requestId, siteTab, openLogins) {
+function begin(services, front, requestId, siteTab, openLogins, history) {
   if (!services.length) return Promise.resolve();
-  return front ? startInFront(services[0], requestId, siteTab) : startInBackground(services, requestId, siteTab, openLogins);
+  return front ? startInFront(services[0], requestId, siteTab, history) : startInBackground(services, requestId, siteTab, openLogins, history);
 }
 
 function tellSite(siteTabId, message) {
@@ -315,7 +324,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       // With maxAgeHours, a service measured that recently is answered from
       // what is saved, and no tab is opened for it.
-      const maxAgeMs = Number(message.maxAgeHours) > 0 ? Number(message.maxAgeHours) * 3600000 : 0;
+      // A whole-history count is always made afresh.
+      const history = message.history === true;
+      const maxAgeMs = !history && Number(message.maxAgeHours) > 0 ? Number(message.maxAgeHours) * 3600000 : 0;
       const fresh = [];
       if (maxAgeMs) {
         for (const service of services) {
@@ -331,11 +342,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const ready = wanted.filter((s, i) => ok[i]);
       const missing = wanted.filter((s, i) => !ok[i]);
       const openLogins = !front && message.openLogins === true;
-      await begin(ready, front, message.requestId, sender.tab, openLogins);
+      await begin(ready, front, message.requestId, sender.tab, openLogins, history);
       if (missing.length) {
         const id = crypto.randomUUID();
         // Saved before the window opens, so the page finds it however fast it loads.
-        const ask = { missing, front, openLogins, requestId: message.requestId, siteTabId: sender.tab.id, siteWindowId: sender.tab.windowId, windowId: null };
+        const ask = { missing, front, openLogins, history, requestId: message.requestId, siteTabId: sender.tab.id, siteWindowId: sender.tab.windowId, windowId: null };
         await chrome.storage.session.set({ [askKey(id)]: ask });
         const win = await chrome.windows.create({ url: `${PERMIT_PAGE}?id=${id}`, type: 'popup', width: 480, height: 620, focused: true });
         await chrome.storage.session.set({ [askKey(id)]: { ...ask, windowId: win.id } });
@@ -361,7 +372,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       // Lets the site move these from "waiting for permission" to "counting".
       for (const service of granted) tellSite(ask.siteTabId, { type: 'counting', service, requestId: ask.requestId });
-      await begin(granted, ask.front, ask.requestId, siteTab, ask.openLogins);
+      await begin(granted, ask.front, ask.requestId, siteTab, ask.openLogins, ask.history);
       chrome.windows.remove(ask.windowId).catch(() => {});
       if (!ask.front) chrome.windows.update(ask.siteWindowId, { focused: true }).catch(() => {});
     })();
@@ -379,7 +390,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (remember && typeof remember === 'object') await chrome.storage.local.set({ [memoryKey(job.service)]: remember });
       const measuredAt = await saveResult(job.service, usage);
       const saved = await savedResult(job.service);
-      await finish(tabId, job, { type: 'usage', usage, measuredAt, record: saved ? saved.record : [] });
+      await finish(tabId, job, { type: 'usage', usage, measuredAt, record: saved ? saved.record : [], history: saved ? saved.history : null });
     } else if (message.type === 'progress' && message.data && message.data.service === job.service) {
       // A running estimate while a slow count is still under way.
       chrome.tabs.sendMessage(job.siteTabId, { type: 'progress', service: job.service, requestId: job.requestId, usage: message.data }).catch(() => {});

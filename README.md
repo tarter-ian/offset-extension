@@ -35,6 +35,7 @@ messages on the page's origin.
 | `{ type: 'ping' }` | Is the extension installed? |
 | `{ type: 'results' }` | The saved result of every service that has one, at once, without opening anything. Answered with `{ type: 'results', results: { service: { usage, measuredAt, record } } }`. |
 | `{ type: 'measure-all', ..., maxAgeHours: N }` | A service measured in the last N hours is answered from what is saved (a `usage` message with `saved: true`); the rest are counted. |
+| `{ type: 'measure-all', ..., history: true }` (also on `measure`) | Read as far back as each account goes, not just 30 days. Slower. See "Whole history" below. |
 | `{ type: 'auto', enabled, services }` | Turn measuring again every 30 days on or off. Off by default. Without `enabled` it only asks. Answered with `{ type: 'auto', auto: { enabled, services, lastRun } }`. |
 | `{ type: 'forget' }` | Delete everything the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
 | `{ type: 'measure-all', requestId, services? }` | Measure every service, or the ones listed, in a separate minimized window. |
@@ -218,3 +219,25 @@ on the person's next visit. It only counts services the person has already
 allowed, never asks for a new one and never opens a login page; a service that
 is signed out is skipped. `forget` turns it off. It needs the `alarms`
 permission, which shows no warning.
+
+## Whole history
+
+The usual count covers the last 30 days. Past use before that is something the
+site would otherwise have to estimate. With `history: true` on `measure` or
+`measure-all`, the counting scripts read as far back as the account goes and
+add `usage.history = { whole, monthly: [{ month: 'YYYY-MM', ... }] }`.
+`whole` is false if the count stopped before the end.
+
+| Service | What `history: true` adds | Without it |
+| --- | --- | --- |
+| YouTube | `videos`, `shorts`, `hours` per month, as far back as Google has kept the history. About one second per 500 videos. | Nothing before the 30 days |
+| Netflix | `titles` per month for the active profile's whole history. About one second per 50 titles. | Only `titlesEver`, a single total |
+| Gemini | `prompts` per month, as far back as Google has kept the activity. | Nothing before the 30 days |
+| ChatGPT, Claude, DoorDash, Uber Eats, Uber | No change: these already send `history` for the whole account on every count. | The same |
+| Amazon | No change yet: three months of orders per month. | The same |
+
+The extension keeps the last whole-history count for each service on the
+person's computer and returns it as `history` (with `measuredAt`) beside
+`usage` in every later `usage` and `results` answer, because a usual count
+does not replace it. `forget` deletes it with everything else. A whole-history
+request is never answered from saved results; `maxAgeHours` is ignored for it.

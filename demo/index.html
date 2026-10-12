@@ -26,6 +26,7 @@
     <p id="status">Looking for the extension...</p>
     <button id="all" disabled>Measure everything</button>
     <p><label><input type="checkbox" id="logins" checked /> Bring me the login page of anything I am signed out of</label></p>
+    <p><label><input type="checkbox" id="history" /> Count my whole history (slower)</label></p>
     <p><label><input type="checkbox" id="reuse" checked /> Reuse a result measured in the last 24 hours</label> <button id="forget" style="min-height:32px;padding:0 10px;font-weight:400">Forget saved results</button></p>
     <p><label><input type="checkbox" id="auto" /> Measure again by itself every 30 days</label> <span id="autoNote" class="muted"></span></p>
     <table>
@@ -67,7 +68,7 @@
       function measure(services, reuse) {
         for (const s of services) state[s] = { kind: 'counting', text: 'Counting...' };
         draw();
-        send({ type: 'measure-all', services, openLogins: document.getElementById('logins').checked, maxAgeHours: reuse ? 24 : 0, requestId: crypto.randomUUID() });
+        send({ type: 'measure-all', services, openLogins: document.getElementById('logins').checked, history: document.getElementById('history').checked, maxAgeHours: reuse ? 24 : 0, requestId: crypto.randomUUID() });
         clearTimeout(noAnswer);
         // The extension answers "started" at once. Silence means this page has lost
         // touch with it, which happens when the extension was reloaded after the page.
@@ -137,7 +138,7 @@
           state[m.service] = { kind: 'login', text: 'Its login page is open in a tab. Log in there and it counts by itself.' };
           draw();
         } else if (m.type === 'usage') {
-          state[m.service] = { kind: 'done', text: summary(m.service, m.usage) + (m.saved ? ` (measured ${ago(m.measuredAt)})` : '') };
+          state[m.service] = { kind: 'done', text: summary(m.service, m.usage) + (m.saved ? ` (measured ${ago(m.measuredAt)})` : '') + (m.history ? ` · history: ${m.history.monthly.length} months from ${m.history.monthly[0] ? m.history.monthly[0].month : 'n/a'}` : '') };
           draw();
         } else if (m.type === 'results') {
           // Saved results, shown as soon as the page opens.

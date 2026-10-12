@@ -3,13 +3,17 @@
 // pressing its "Show More" button until the list reaches back 30 days. Netflix
 // gives a date for each title but not how long it was watched. Only counts and
 // dates leave the page; no titles.
+// Asked for the whole history, it keeps pressing until the list ends and adds
+// titles per month.
 (function () {
   if (window.__offsetNetflixActivity) return;
   window.__offsetNetflixActivity = { started: false, done: false };
   var state = window.__offsetNetflixActivity;
 
   var WINDOW_DAYS = 30;
-  var MAX_ROUNDS = 40;
+  var WHOLE = window.__offsetHistory === true;
+  // Each press of "Show More" adds about twenty titles.
+  var MAX_ROUNDS = WHOLE ? 1500 : 40;
   var ACTIVITY_URL = 'https://www.netflix.com/viewingactivity';
 
   var sleep = function (ms) {
@@ -64,18 +68,41 @@
     return document.querySelectorAll('li.retableRow');
   };
 
-  // The button under the list that loads older titles. Its label is translated.
+  // The button under the list that loads older titles. Its label is translated,
+  // so it is found by its place and its blue style. Other buttons follow the
+  // list too (one leads back to the account page), and when the list has ended
+  // this one is gone, so the style check is what stops a wrong press.
   function moreButton() {
     var list = rows();
     var last = list[list.length - 1];
     if (!last) return null;
-    var buttons = document.querySelectorAll('button');
+    var buttons = document.querySelectorAll('button.btn-blue');
     for (var i = 0; i < buttons.length; i++) {
       var b = buttons[i];
       if (b.disabled || b.closest('li.retableRow')) continue;
       if (last.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) return b;
     }
     return null;
+  }
+
+  // Waits for the list to grow past `before` rows. It watches the page instead
+  // of checking on a timer, because Chrome slows timers right down in a tab
+  // nobody is looking at, and a long history would take many minutes.
+  function grown(before) {
+    return new Promise(function (resolve) {
+      if (rows().length > before) return resolve(true);
+      var watcher = new MutationObserver(function () {
+        if (rows().length <= before) return;
+        watcher.disconnect();
+        clearTimeout(giveUp);
+        resolve(true);
+      });
+      watcher.observe(document.body, { childList: true, subtree: true });
+      var giveUp = setTimeout(function () {
+        watcher.disconnect();
+        resolve(rows().length > before);
+      }, 8000);
+    });
   }
 
   async function collect() {
@@ -93,7 +120,7 @@
 
     for (var round = 0; round < MAX_ROUNDS; round++) {
       var o = oldest();
-      if (!o || o < since) break;
+      if (!o || (!WHOLE && o < since)) break;
       var button = moreButton();
       if (!button) break; // The whole history is on the page.
       if (round === MAX_ROUNDS - 1) {
@@ -103,8 +130,7 @@
       banner('Reading your Netflix history: ' + rows().length + ' titles so far');
       var before = rows().length;
       button.click();
-      for (var wait = 0; wait < 16 && rows().length === before; wait++) await sleep(500);
-      if (rows().length === before) {
+      if (!(await grown(before))) {
         truncated = !!moreButton();
         break;
       }
@@ -112,6 +138,7 @@
 
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
     var days = {};
+    var months = {};
     var unread = 0;
     Array.prototype.forEach.call(rows(), function (row) {
       var d = readDate((row.querySelector('.date') || {}).textContent);
@@ -119,8 +146,9 @@
         unread++;
         return;
       }
-      if (d < since) return;
       var date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      months[date.slice(0, 7)] = (months[date.slice(0, 7)] || 0) + 1;
+      if (d < since) return;
       days[date] = (days[date] || 0) + 1;
     });
     var daily = Object.keys(days).sort().map(function (k) { return { date: k, titles: days[k] }; });
@@ -137,6 +165,10 @@
       activeDays: daily.length,
       daily: daily,
       titlesEver: typeof everWatched === 'number' ? everWatched : null,
+      // Titles per month for as long as this profile has a history. Only when the whole history was asked for.
+      history: WHOLE
+        ? { whole: !truncated, monthly: Object.keys(months).sort().map(function (m) { return { month: m, titles: months[m] }; }) }
+        : undefined,
       truncated: truncated,
       unreadRows: unread,
     };

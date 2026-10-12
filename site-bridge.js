@@ -13,6 +13,10 @@
 //                       answered with { type: 'results', results: { service: { usage, measuredAt, record } } }
 //                     measure-all with maxAgeHours: N answers from what is saved for any service
 //                       measured in the last N hours (usage message with saved: true) and counts the rest
+//                     measure or measure-all with history: true reads as far back as each account
+//                       goes (slower). Netflix, YouTube and Gemini then add usage.history =
+//                       { whole, monthly: [{ month, ... }] }; the extension keeps it and returns it as
+//                       "history" beside usage in later 'usage' and 'results' answers
 //                     window.postMessage({ source: 'offset-site', type: 'auto', enabled, services })
 //                       turn measuring again every 30 days on or off (off by default); without
 //                       "enabled" it only asks. Answered with { type: 'auto', auto: { enabled, services, lastRun } }
@@ -72,7 +76,7 @@
         toPage({ type: failed ? 'error' : 'results', error: failed ? 'unavailable' : undefined, results: res && res.results });
       });
     } else if (m.type === 'measure' || m.type === 'measure-all') {
-      var request = { type: m.type, service: m.service, services: m.services, openLogins: m.openLogins === true, maxAgeHours: m.maxAgeHours, requestId: m.requestId };
+      var request = { type: m.type, service: m.service, services: m.services, openLogins: m.openLogins === true, history: m.history === true, maxAgeHours: m.maxAgeHours, requestId: m.requestId };
       chrome.runtime.sendMessage(request, function (res) {
         var failed = chrome.runtime.lastError || !res || !res.ok;
         toPage({

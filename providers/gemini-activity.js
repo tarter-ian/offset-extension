@@ -8,8 +8,10 @@
   var state = window.__offsetGeminiActivity;
 
   var WINDOW_DAYS = 30;
-  var MAX_ROUNDS = 80;
-  var MAX_ITEMS = 8000;
+  // Asked for the whole history, it reads to the end of the list and adds items per month.
+  var WHOLE = window.__offsetHistory === true;
+  var MAX_ROUNDS = WHOLE ? 600 : 80;
+  var MAX_ITEMS = WHOLE ? 60000 : 8000;
   var ACTIVITY_URL = 'https://myactivity.google.com/product/gemini';
 
   var sleep = function (ms) {
@@ -64,6 +66,28 @@
     return null;
   }
 
+  // Waits for the list to grow past `before` items. It watches the page instead
+  // of checking on a timer, because Chrome slows timers right down in a tab
+  // nobody is looking at.
+  function grown(before) {
+    return new Promise(function (resolve) {
+      var main = document.querySelector('[role="main"]') || document.body;
+      var watcher = new MutationObserver(function () {
+        var next = read();
+        if (next.total <= before) return;
+        watcher.disconnect();
+        clearTimeout(giveUp);
+        resolve(next);
+      });
+      watcher.observe(main, { childList: true, subtree: true });
+      var giveUp = setTimeout(function () {
+        watcher.disconnect();
+        var next = read();
+        resolve(next.total > before ? next : null);
+      }, 8000);
+    });
+  }
+
   async function collect() {
     var since = new Date();
     since.setDate(since.getDate() - WINDOW_DAYS);
@@ -73,7 +97,7 @@
     var seen = read();
     var truncated = false;
     for (var round = 0; round < MAX_ROUNDS; round++) {
-      if (seen.oldest && seen.oldest < sinceDate) break;
+      if (!WHOLE && seen.oldest && seen.oldest < sinceDate) break;
       var button = moreButton();
       if (!button) break; // End of the activity.
       if (seen.total >= MAX_ITEMS || round === MAX_ROUNDS - 1) {
@@ -81,19 +105,21 @@
         break;
       }
       banner('Reading your Gemini activity: ' + seen.total + ' items so far');
+      var waiting = grown(seen.total);
       button.click();
-      var grew = false;
-      for (var wait = 0; wait < 16; wait++) {
-        await sleep(500);
-        var next = read();
-        if (next.total > seen.total) {
-          seen = next;
-          grew = true;
-          break;
-        }
+      var next = await waiting;
+      if (!next) {
+        // Nothing came. Ask once more before deciding.
+        waiting = grown(seen.total);
+        button.click();
+        next = await waiting;
       }
-      if (!grew) {
-        if (moreButton()) truncated = true;
+      if (next) seen = next;
+      else {
+        // Google keeps this button in the page (out of sight) even at the end of
+        // the activity, so two presses that bring nothing are the only sign of
+        // the end. Offline, they mean nothing.
+        if (!navigator.onLine) truncated = true;
         break;
       }
     }
@@ -102,6 +128,11 @@
       .filter(function (d) { return d >= sinceDate; })
       .sort()
       .map(function (d) { return { date: d, prompts: seen.days[d] }; });
+    var months = {};
+    Object.keys(seen.days).forEach(function (d) {
+      months[d.slice(0, 7)] = (months[d.slice(0, 7)] || 0) + seen.days[d];
+    });
+    var monthly = Object.keys(months).sort().map(function (m) { return { month: m, prompts: months[m] }; });
     return {
       service: 'gemini',
       windowDays: WINDOW_DAYS,
@@ -111,6 +142,7 @@
       prompts: daily.reduce(function (t, d) { return t + d.prompts; }, 0),
       activeDays: daily.length,
       daily: daily,
+      history: WHOLE ? { whole: !truncated, monthly: monthly } : undefined,
       truncated: truncated,
     };
   }
