@@ -1,4 +1,4 @@
-# Offset browser extension
+# My Offset browser extension
 
 Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, Netflix, DoorDash, Uber Eats, Amazon and Uber, so the
 site can work out their footprint from real numbers instead of an estimate.

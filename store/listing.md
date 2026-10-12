@@ -7,11 +7,11 @@ Text to paste into the Chrome Web Store developer dashboard. Build the zip with
 
 **Name**
 
-Offset: measure my usage
+My Offset: measure my usage
 
 **Summary** (132 characters at most)
 
-Counts how much you use AI, video, food delivery, shopping and ride apps, so Offset can work out your footprint. Counts only.
+Counts how much you use AI, video, food delivery, shopping and ride apps, so My Offset can work out your footprint. Counts only.
 
 **Category**
 
@@ -23,13 +23,13 @@ English
 
 **Description**
 
-Offset works out the environmental footprint of the things you do online and
+My Offset works out the environmental footprint of the things you do online and
 through apps, so you can pay to undo it. Most footprint calculators ask you to
 guess. This extension measures instead.
 
-When you press Measure on the Offset site, the extension opens each service you
+When you press Measure on the My Offset site, the extension opens each service you
 choose in a separate, minimized window, counts your last 30 days there, sends
-the counts to Offset and closes the window. You stay on the Offset page.
+the counts to My Offset and closes the window. You stay on the My Offset page.
 
 What it can count:
 
@@ -49,7 +49,7 @@ You stay in control:
   asks for that one site. You can allow services one at a time or all at once.
 - It runs only when you press Measure, unless you switch on "measure again every 30 days". That is off by default.
 - It keeps your last results on your own computer so you do not have to count
-  again. One button on the Offset site deletes them.
+  again. One button on the My Offset site deletes them.
 - It only works for services you are already signed in to. It never asks for a
   password and never signs in for you.
 
@@ -61,7 +61,7 @@ The code is open source: https://github.com/tarter-ian/offset-extension
 
 Count how much the user has used a set of online services (AI assistants, video,
 food delivery, shopping and ride-hailing) over the last 30 days, and pass those
-counts to the Offset website so it can estimate the user's environmental
+counts to the My Offset website so it can estimate the user's environmental
 footprint.
 
 **Permission justifications**
@@ -79,7 +79,7 @@ footprint.
 | Host: `www.ubereats.com` | Optional, asked for when the user first measures Uber Eats. To count the user's orders. |
 | Host: `www.amazon.com` | Optional, asked for when the user first measures Amazon. To count the user's orders and items and read order totals. |
 | Host: `riders.uber.com` | Optional, asked for when the user first measures Uber. To count the user's rides and their distance. |
-| Content script on the Offset site | To pass messages between the Offset web page and the extension: the page's request to measure, and the counts in reply. |
+| Content script on the My Offset site | To pass messages between the My Offset web page and the extension: the page's request to measure, and the counts in reply. |
 
 **Remote code**
 
