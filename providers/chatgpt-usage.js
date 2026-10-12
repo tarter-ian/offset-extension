@@ -1,6 +1,7 @@
 // Reclaim user script: ChatGPT usage, last 30 days.
 // After the person signs in, counts their prompts, reasoning responses and
-// generated images per day, and proves the account's plan. Only counts and
+// generated images per day, notes how many chats they started each month since
+// their first, and proves the account's plan. Only counts and
 // dates leave the page; no titles and no message text.
 (function () {
   if (window.__offsetChatgptUsage) return;
@@ -109,6 +110,45 @@
     return days;
   }
 
+  // Every chat the account still has, by the month it was started, read from
+  // the chat list only (no chat is opened). The site uses it to price past use
+  // by how the person actually used ChatGPT, not today's rate since 2022.
+  // Dates and counts only. Deleted chats are gone and can't be counted.
+  var HISTORY_PAGE = 100;
+  var HISTORY_MAX_PAGES = 50;
+  async function history(headers, since) {
+    var months = {};
+    var chats = 0;
+    var beforeWindow = 0;
+    var first = null;
+    var complete = false;
+    for (var page = 0; page < HISTORY_MAX_PAGES; page++) {
+      banner('Looking at when you started each ChatGPT chat...');
+      var list = await getJson('/backend-api/conversations?offset=' + page * HISTORY_PAGE + '&limit=' + HISTORY_PAGE + '&order=updated', headers);
+      if (!list || !Array.isArray(list.items)) return null;
+      list.items.forEach(function (c) {
+        var ms = typeof c.create_time === 'number' ? c.create_time * 1000 : Date.parse(c.create_time);
+        if (!(ms > 0)) return;
+        var key = new Date(ms).toISOString().slice(0, 7);
+        months[key] = (months[key] || 0) + 1;
+        chats++;
+        if (ms < since) beforeWindow++;
+        if (first === null || ms < first) first = ms;
+      });
+      if (list.items.length < HISTORY_PAGE) {
+        complete = true;
+        break;
+      }
+    }
+    return {
+      firstChat: first === null ? null : new Date(first).toISOString().slice(0, 10),
+      chats: chats,
+      chatsBeforeWindow: beforeWindow,
+      months: months,
+      complete: complete,
+    };
+  }
+
   async function collect(s) {
     var headers = { authorization: 'Bearer ' + s.accessToken };
     var now = Date.now();
@@ -191,6 +231,9 @@
       if (used) conversations++;
     });
 
+    // Read last, so it never uses up ChatGPT's allowance before the chats are counted.
+    var past = await history(headers, since).catch(function () { return null; });
+
     var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
     var sum = function (key) {
       return daily.reduce(function (t, d) { return t + d[key]; }, 0);
@@ -210,6 +253,7 @@
       // Chats in the window that could not be read this time. Above zero, the totals are too low.
       failedConversations: todo.length,
       reusedConversations: reused,
+      history: past,
       // For the extension to keep for next time. It removes this before anything goes to the site.
       remember: counted,
     };
