@@ -178,7 +178,47 @@
           daily.push({ date: date, tokens: tokens });
         }
       });
+      // Where the tokens were used. A second request gives, for each day, the
+      // share of the plan's limit used in each place (command line, editor,
+      // ChatGPT's agent on the web, and so on). Each day's tokens are split by
+      // those shares. "work" places are ChatGPT's own agent; the rest are Codex.
+      var byPlace = {};
+      var workTokens = 0;
+      var codexTokens = 0;
+      try {
+        var tokensOn = {};
+        buckets.forEach(function (b) {
+          if (b && b.start_date) tokensOn[String(b.start_date).slice(0, 10)] = Number(b.tokens) || 0;
+        });
+        var days = Object.keys(tokensOn).sort();
+        if (days.length) {
+          var split = await getJson(
+            '/backend-api/wham/usage/daily-token-usage-breakdown?start_date=' + days[0] + '&end_date=' + new Date().toISOString().slice(0, 10),
+            headers,
+          );
+          ((split && split.data) || []).forEach(function (d) {
+            var tokens = tokensOn[String(d.date).slice(0, 10)];
+            var shares = d.product_surface_usage_values || {};
+            var total = Object.keys(shares).reduce(function (t, k) { return t + (Number(shares[k]) || 0); }, 0);
+            if (!tokens || !total) return;
+            Object.keys(shares).forEach(function (place) {
+              var part = (tokens * (Number(shares[place]) || 0)) / total;
+              if (!part) return;
+              byPlace[place] = Math.round((byPlace[place] || 0) + part);
+              if (/^work_|^agent_/.test(place)) workTokens += part;
+              else codexTokens += part;
+            });
+          });
+        }
+      } catch (e) {}
+
       return {
+        // All-time tokens split into ChatGPT's own agent ("work") and Codex, and by
+        // each place. Empty when ChatGPT gives no split; the split is by share of
+        // plan limit, so it is approximate.
+        byPlace: byPlace,
+        agentTokens: Math.round(workTokens),
+        codexTokens: Math.round(codexTokens),
         lifetimeTokens: Number(agentic.lifetime_tokens) || 0,
         peakDailyTokens: Number(agentic.peak_daily_tokens) || 0,
         tokens: windowTokens,

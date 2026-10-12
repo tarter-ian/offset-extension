@@ -35,6 +35,7 @@ messages on the page's origin.
 | `{ type: 'ping' }` | Is the extension installed? |
 | `{ type: 'results' }` | The saved result of every service that has one, at once, without opening anything. Answered with `{ type: 'results', results: { service: { usage, measuredAt, record } } }`. |
 | `{ type: 'measure-all', ..., maxAgeHours: N }` | A service measured in the last N hours is answered from what is saved (a `usage` message with `saved: true`); the rest are counted. |
+| `{ type: 'auto', enabled, services }` | Turn measuring again every 30 days on or off. Off by default. Without `enabled` it only asks. Answered with `{ type: 'auto', auto: { enabled, services, lastRun } }`. |
 | `{ type: 'forget' }` | Delete everything the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
 | `{ type: 'measure-all', requestId, services? }` | Measure every service, or the ones listed, in a separate minimized window. |
 | `{ type: 'measure-all', ..., openLogins: true }` | As above, and the login page of each signed-out service is brought to the person: its tab moves beside the site, the first is put in front, and each closes itself once it has counted. Answered with `login-needed` for those services. Ask only for services the person says they use, or a new visitor gets a tab for every service. |
@@ -188,7 +189,11 @@ No title leaves the page.
 ChatGPT keeps totals for each account's profile page and returns them in one
 request. The ChatGPT service passes them on as `usage.agentic`:
 `lifetimeTokens`, `peakDailyTokens`, `tokens` and `daily[]` of
-`{ date, tokens }` for the window, `firstDay` and `activeDaysEver`. These
+`{ date, tokens }` for the window, `firstDay` and `activeDaysEver`. It also
+gives `agentTokens`, `codexTokens` and `byPlace`: the all-time total split by
+where it was used (ChatGPT's own agent, or Codex on the command line, in an
+editor and so on). That split comes from a second request that reports each
+day's share of the plan limit by place, so it is approximate. These
 are tokens used by ChatGPT's agent and Codex tools, not chat prompts, and
 ChatGPT does not say whether they include input re-read from a cache. The same
 totals have a field for chat turns (`chatTurns`, `chatTurnsLifetime`), which
@@ -202,3 +207,14 @@ upload. It leaves out `demo/`, `store/` and this README, and its manifest lists
 only the site's real addresses. `store/listing.md` has the text for every field
 of the store's forms, including the reason for each permission.
 `store/make-icons.mjs icons` redraws the icons.
+
+## Measuring again by itself
+
+Off unless the site turns it on with an `auto` message, which it should only do
+when the person asks. When on, the extension checks twice a day and, once 30
+days have passed since the last run, counts the listed services in the same
+minimized window and saves the results. The site picks them up with `results`
+on the person's next visit. It only counts services the person has already
+allowed, never asks for a new one and never opens a login page; a service that
+is signed out is skipped. `forget` turns it off. It needs the `alarms`
+permission, which shows no warning.

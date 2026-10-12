@@ -47,7 +47,7 @@ You stay in control:
 
 - It installs with access to no site. The first time you measure a service, it
   asks for that one site. You can allow services one at a time or all at once.
-- It runs only when you press Measure. It does nothing in the background.
+- It runs only when you press Measure, unless you switch on "measure again every 30 days". That is off by default.
 - It keeps your last results on your own computer so you do not have to count
   again. One button on the Offset site deletes them.
 - It only works for services you are already signed in to. It never asks for a
@@ -69,6 +69,7 @@ footprint.
 | Permission | Why it is needed |
 | --- | --- |
 | `scripting` | To run the counting script in the tab the extension opens on a service the user chose to measure. The script reads the user's own usage history on that page and adds up counts. |
+| `alarms` | To check twice a day whether 30 days have passed, for users who turn on "measure again by itself". Off by default. |
 | `storage` | To keep the user's last results and day-by-day counts on their own computer, so the site can show them without counting again, and so a ChatGPT count that was cut short can continue. Nothing is stored elsewhere. |
 | Host: `chatgpt.com` | Optional, asked for when the user first measures ChatGPT. To count the user's prompts, images and agent tokens. |
 | Host: `claude.ai` | Optional, asked for when the user first measures Claude. To count the user's prompts and read the share of their plan limit used. |

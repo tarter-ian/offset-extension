@@ -74,11 +74,12 @@ const closing = new Set();
 async function finish(tabId, job, message, closeTab = true) {
   if (closeTab) closing.add(tabId);
   await dropJob(tabId);
-  chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
+  // A count the extension started by itself has no site tab to tell.
+  if (job.siteTabId != null) chrome.tabs.sendMessage(job.siteTabId, { ...message, requestId: job.requestId, service: job.service }).catch(() => {});
   if (closeTab) chrome.tabs.remove(tabId).catch(() => {});
   // A tab the person was working in hands over to the next login that is
   // waiting, or goes back to the site; background ones never took the screen.
-  if (job.front) {
+  if (job.front && job.siteTabId != null) {
     const next = await waitingLogin(job.siteTabId);
     chrome.tabs.update(next ?? job.siteTabId, { active: true }).catch(() => {});
   }
@@ -140,6 +141,8 @@ async function startInBackground(services, requestId, siteTab, openLogins) {
   try {
     const win = await chrome.windows.create({ url: urls, focused: false, state: 'minimized' });
     tabs = win.tabs;
+    // Some browsers open it at normal size all the same; ask again to be sure it is out of the way.
+    if (win.state !== 'minimized') chrome.windows.update(win.id, { state: 'minimized' }).catch(() => {});
   } catch (e) {
     tabs = null;
   }
@@ -212,8 +215,47 @@ function begin(services, front, requestId, siteTab, openLogins) {
 }
 
 function tellSite(siteTabId, message) {
-  chrome.tabs.sendMessage(siteTabId, message).catch(() => {});
+  if (siteTabId != null) chrome.tabs.sendMessage(siteTabId, message).catch(() => {});
 }
+
+// Measuring again by itself. Off unless the person turns it on from the site.
+// When on, about every 30 days the extension counts the chosen services in the
+// same minimized window and keeps the results; the site reads them on the
+// person's next visit. It only counts services already allowed, never asks for
+// a new one, and never opens a login page.
+const AUTO_KEY = 'auto';
+const AUTO_ALARM = 'offset-auto';
+const AUTO_EVERY_MS = 30 * 86400000;
+const getAuto = async () => (await chrome.storage.local.get(AUTO_KEY))[AUTO_KEY] || { enabled: false, services: [], lastRun: null };
+
+async function setAuto(enabled, services) {
+  const old = await getAuto();
+  const auto = {
+    enabled: !!enabled,
+    services: Array.isArray(services) ? services.filter((s) => Object.hasOwn(SERVICES, s)) : old.services,
+    // Turning it on starts the 30 days from now; the person has just measured.
+    lastRun: enabled ? old.lastRun || new Date().toISOString() : old.lastRun,
+  };
+  await chrome.storage.local.set({ [AUTO_KEY]: auto });
+  if (auto.enabled) chrome.alarms.create(AUTO_ALARM, { periodInMinutes: 12 * 60 });
+  else chrome.alarms.clear(AUTO_ALARM);
+  return auto;
+}
+
+async function runAutoIfDue(force = false) {
+  const auto = await getAuto();
+  if (!auto.enabled) return [];
+  if (!force && auto.lastRun && Date.now() - Date.parse(auto.lastRun) < AUTO_EVERY_MS) return [];
+  const ok = await Promise.all(auto.services.map(allowed));
+  const services = auto.services.filter((s, i) => ok[i]);
+  await chrome.storage.local.set({ [AUTO_KEY]: { ...auto, lastRun: new Date().toISOString() } });
+  if (services.length) await startInBackground(services, 'auto', { id: null, windowId: undefined }, false);
+  return services;
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTO_ALARM) runAutoIfDue();
+});
 
 // If the person closes the permission window without answering, nothing was allowed.
 chrome.windows.onRemoved.addListener(async (windowId) => {
@@ -232,8 +274,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'forget') {
     (async () => {
       const all = await chrome.storage.local.get(null);
-      await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('memory:') || k.startsWith('saved:')));
+      await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('memory:') || k.startsWith('saved:') || k === AUTO_KEY));
+      chrome.alarms.clear(AUTO_ALARM);
       sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  // From the Offset site: turn measuring-by-itself on or off, or ask how it is set.
+  if (message.type === 'auto') {
+    (async () => {
+      const auto = typeof message.enabled === 'boolean' ? await setAuto(message.enabled, message.services) : await getAuto();
+      sendResponse({ ok: true, auto });
     })();
     return true;
   }

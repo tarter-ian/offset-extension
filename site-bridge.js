@@ -13,6 +13,9 @@
 //                       answered with { type: 'results', results: { service: { usage, measuredAt, record } } }
 //                     measure-all with maxAgeHours: N answers from what is saved for any service
 //                       measured in the last N hours (usage message with saved: true) and counts the rest
+//                     window.postMessage({ source: 'offset-site', type: 'auto', enabled, services })
+//                       turn measuring again every 30 days on or off (off by default); without
+//                       "enabled" it only asks. Answered with { type: 'auto', auto: { enabled, services, lastRun } }
 //                     window.postMessage({ source: 'offset-site', type: 'forget' })
 //                       delete everything the extension keeps between runs; answered with 'forgotten'
 // Extension -> page:  { source: 'offset-extension', type: 'ready', version }
@@ -57,6 +60,11 @@
     } else if (m.type === 'forget') {
       chrome.runtime.sendMessage({ type: 'forget' }, function (res) {
         toPage({ type: chrome.runtime.lastError || !res ? 'error' : 'forgotten', error: res ? undefined : 'unavailable' });
+      });
+    } else if (m.type === 'auto') {
+      chrome.runtime.sendMessage({ type: 'auto', enabled: m.enabled, services: m.services }, function (res) {
+        var failed = chrome.runtime.lastError || !res;
+        toPage({ type: failed ? 'error' : 'auto', error: failed ? 'unavailable' : undefined, auto: res && res.auto });
       });
     } else if (m.type === 'results') {
       chrome.runtime.sendMessage({ type: 'results' }, function (res) {

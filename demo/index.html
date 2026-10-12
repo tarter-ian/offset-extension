@@ -27,6 +27,7 @@
     <button id="all" disabled>Measure everything</button>
     <p><label><input type="checkbox" id="logins" checked /> Bring me the login page of anything I am signed out of</label></p>
     <p><label><input type="checkbox" id="reuse" checked /> Reuse a result measured in the last 24 hours</label> <button id="forget" style="min-height:32px;padding:0 10px;font-weight:400">Forget saved results</button></p>
+    <p><label><input type="checkbox" id="auto" /> Measure again by itself every 30 days</label> <span id="autoNote" class="muted"></span></p>
     <table>
       <tbody id="rows"></tbody>
     </table>
@@ -57,7 +58,8 @@
         }
         const images = u.images ? ` and ${n(u.images)} images` : '';
         const short = u.failedConversations ? `. Incomplete: ${n(u.failedConversations)} chats not read yet, so this is too low. Measure again later and it carries on from here` : u.truncated ? ". Incomplete: stopped early" : "";
-        const agent = u.agentic && u.agentic.lifetimeTokens ? `. Agent and Codex: ${n(u.agentic.tokens)} tokens in ${u.windowDays} days, ${n(u.agentic.lifetimeTokens)} all time` : '';
+        const split = u.agentic && (u.agentic.agentTokens || u.agentic.codexTokens) ? ` (agent ${n(u.agentic.agentTokens)}, Codex ${n(u.agentic.codexTokens)})` : '';
+        const agent = u.agentic && u.agentic.lifetimeTokens ? `. Agent and Codex: ${n(u.agentic.tokens)} tokens in ${u.windowDays} days, ${n(u.agentic.lifetimeTokens)} all time${split}` : '';
         return `${n(u.prompts)} prompts${images} in ${u.windowDays} days${agent}${short}`;
       }
 
@@ -113,7 +115,10 @@
         const m = event.data;
         if (!m || m.source !== 'offset-extension') return;
         if (m.type === 'ready') {
-          if (!found) send({ type: 'results' });
+          if (!found) {
+            send({ type: 'results' });
+            send({ type: 'auto' });
+          }
           found = true;
           status.textContent = `Extension found (version ${m.version}).`;
           draw();
@@ -140,6 +145,10 @@
             if (state[service] && state[service].kind === 'idle') state[service] = { kind: 'done', text: `${summary(service, r.usage)} (measured ${ago(r.measuredAt)}, ${r.record.length} days on record)` };
           }
           draw();
+        } else if (m.type === 'auto' && m.auto) {
+          document.getElementById('auto').checked = m.auto.enabled;
+          const next = m.auto.enabled && m.auto.lastRun ? new Date(Date.parse(m.auto.lastRun) + 30 * 86400000).toLocaleDateString('en-US') : '';
+          document.getElementById('autoNote').textContent = m.auto.enabled ? `${m.auto.services.length} services, next on ${next}` : '';
         } else if (m.type === 'forgotten') {
           for (const service of Object.keys(state)) state[service] = { kind: 'idle', text: '' };
           draw();
@@ -160,6 +169,10 @@
 
       all.addEventListener('click', () => measure(Object.keys(NAMES), document.getElementById('reuse').checked));
       document.getElementById('forget').addEventListener('click', () => send({ type: 'forget' }));
+      // Only the services that already have a result are measured again; those are the ones the person allowed.
+      document.getElementById('auto').addEventListener('change', (e) =>
+        send({ type: 'auto', enabled: e.target.checked, services: Object.keys(state).filter((s) => state[s].kind === 'done') }),
+      );
 
       // How long ago a saved result was measured, in plain words.
       function ago(iso) {
