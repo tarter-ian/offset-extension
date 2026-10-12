@@ -1,6 +1,6 @@
 # Offset browser extension
 
-Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, DoorDash and Uber Eats, so the
+Measures how much a person uses ChatGPT, Claude, Gemini, YouTube, DoorDash, Uber Eats and Amazon, so the
 site can work out their footprint from real numbers instead of an estimate.
 
 The person installs it once. After that the site can ask it to measure, and it
@@ -59,6 +59,7 @@ Every service: `service`, `windowDays` (30), `collectedAt`, `activeDays`,
 | `gemini` | `prompts` | `{ date, prompts }` |
 | `doordash` | `orders`, `deliveries`, `pickups`, `groceryOrders`, `items`, `history` | `{ date, orders, deliveries, pickups, groceryOrders, items }` |
 | `ubereats` | `orders`, `deliveries`, `pickups`, `items`, `history` | `{ date, orders, deliveries, pickups, items }` |
+| `amazon` | `orders`, `items`, `history` | `{ date, orders, items }` |
 | `youtube` | `videos`, `shorts`, `watchedHours` | `{ date, videos, shorts, hours }` |
 
 Things to know when using these numbers:
@@ -130,3 +131,13 @@ a pickup is not. `items` is how many things were in the orders. `history` holds
 has made, which is cheap to read because both sites list all past orders.
 Cancelled orders are left out. No restaurant, item name, price or address leaves
 the page.
+
+## Amazon
+
+Amazon returns orders and items, not what was bought. It is read from the
+"Your Orders" pages as Amazon shows them, ten orders at a time, so the tab moves
+through a few pages while it counts. `history.monthly` covers only the three
+months of Amazon's "past 3 months" view, and the oldest of them may be partial.
+Amazon gives the day an order was placed, not the time. Cancelled orders are
+left out; returned ones are not. No product name, price or address leaves the
+page.
