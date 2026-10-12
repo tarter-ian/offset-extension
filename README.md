@@ -43,7 +43,7 @@ messages on the page's origin.
 | `{ type: 'started', requestId, services, needsPermission }` | Under way. `needsPermission` lists services the person is being asked to allow first. |
 | `{ type: 'counting', service, requestId }` | The person allowed this service and its count has begun. |
 | `{ type: 'usage', service, requestId, usage }` | One service's counts. |
-| `{ type: 'error', service, requestId, error }` | `signed-out`, `denied`, `closed`, `timeout` or `unavailable`. |
+| `{ type: 'error', service, requestId, error }` | `signed-out`, `denied`, `closed`, `timeout`, `reload-page` (the extension was reloaded after the page loaded; refresh the page) or `unavailable`. |
 
 `demo/index.html` is a working example.
 
