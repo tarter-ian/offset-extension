@@ -56,7 +56,8 @@
         }
         const images = u.images ? ` and ${n(u.images)} images` : '';
         const short = u.failedConversations ? `. Incomplete: ${n(u.failedConversations)} chats not read yet, so this is too low. Measure again later and it carries on from here` : u.truncated ? ". Incomplete: stopped early" : "";
-        return `${n(u.prompts)} prompts${images} in ${u.windowDays} days${short}`;
+        const agent = u.agentic && u.agentic.lifetimeTokens ? `. Agent and Codex: ${n(u.agentic.tokens)} tokens in ${u.windowDays} days, ${n(u.agentic.lifetimeTokens)} all time` : '';
+        return `${n(u.prompts)} prompts${images} in ${u.windowDays} days${agent}${short}`;
       }
 
       // In the background, in a separate minimized window.

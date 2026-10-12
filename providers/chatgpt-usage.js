@@ -149,11 +149,56 @@
     };
   }
 
+  // ChatGPT keeps running totals for each account's profile page, and hands
+  // them over in one request: tokens used by its agent and Codex tools, by day
+  // and for all time. (It has a field for chat turns too, but leaves it at zero,
+  // which is why chats still have to be read one by one.) ChatGPT does not say
+  // whether these tokens include input it re-read from a cache. Null when the
+  // account has no profile or the request fails.
+  async function profileTotals(headers, sinceDate) {
+    try {
+      var data = await getJson('/backend-api/profiles/me/page?personal=true', headers);
+      var page = data && data.page;
+      var stats = page && page.stats;
+      if (!stats) return null;
+      var agentic = stats.agentic || {};
+      var chat = stats.chat || {};
+      var buckets = (page.activity_graph && page.activity_graph.daily_usage_buckets) || [];
+      var daily = [];
+      var windowTokens = 0;
+      var windowTurns = 0;
+      buckets.forEach(function (b) {
+        if (!b || !b.start_date) return;
+        var date = String(b.start_date).slice(0, 10);
+        var tokens = Number(b.tokens) || 0;
+        var turns = Number(b.chat_turns) || 0;
+        if (date >= sinceDate) {
+          windowTokens += tokens;
+          windowTurns += turns;
+          daily.push({ date: date, tokens: tokens });
+        }
+      });
+      return {
+        lifetimeTokens: Number(agentic.lifetime_tokens) || 0,
+        peakDailyTokens: Number(agentic.peak_daily_tokens) || 0,
+        tokens: windowTokens,
+        daily: daily,
+        firstDay: buckets.length ? String(buckets[0].start_date).slice(0, 10) : null,
+        activeDaysEver: buckets.length,
+        chatTurnsLifetime: Number(chat.lifetime_turns) || 0,
+        chatTurns: windowTurns,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function collect(s) {
     var headers = { authorization: 'Bearer ' + s.accessToken };
     var now = Date.now();
     var since = now - WINDOW_DAYS * 86400000;
     var sinceDate = new Date(since).toISOString().slice(0, 10);
+    var agentic = await profileTotals(headers, sinceDate);
 
     var chats = [];
     var truncated = false;
@@ -278,6 +323,9 @@
       windowDays: WINDOW_DAYS,
       collectedAt: new Date(now).toISOString(),
       planType: (s.account && s.account.planType) || '',
+      // Agent and Codex tokens from the account's profile totals: this window,
+      // per day, and all time. Separate from the chat prompts below.
+      agentic: agentic,
       prompts: sum('prompts'),
       reasoningResponses: sum('reasoning'),
       images: sum('images'),

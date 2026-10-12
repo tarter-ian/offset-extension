@@ -170,3 +170,15 @@ profile that is active. Netflix gives no watch time, so the site has to assume a
 length per title. It presses the page's "Show More" button until the list
 reaches back 30 days. `titlesEver` is the size of that profile's whole history.
 No title leaves the page.
+
+## ChatGPT agent and Codex tokens
+
+ChatGPT keeps totals for each account's profile page and returns them in one
+request. The ChatGPT service passes them on as `usage.agentic`:
+`lifetimeTokens`, `peakDailyTokens`, `tokens` and `daily[]` of
+`{ date, tokens }` for the window, `firstDay` and `activeDaysEver`. These
+are tokens used by ChatGPT's agent and Codex tools, not chat prompts, and
+ChatGPT does not say whether they include input re-read from a cache. The same
+totals have a field for chat turns (`chatTurns`, `chatTurnsLifetime`), which
+ChatGPT leaves at zero today; if it starts filling it in, chats would no longer
+need to be read one by one. `agentic` is null when the account has no profile.
