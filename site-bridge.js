@@ -8,8 +8,13 @@
 //                       person instead (answered with 'login-needed', then 'usage' once they sign in)
 //                     window.postMessage({ source: 'offset-site', type: 'measure', service, requestId })
 //                       one service in a front tab, so the person can sign in
+//                     window.postMessage({ source: 'offset-site', type: 'results' })
+//                       the saved result of each service, at once and without opening anything;
+//                       answered with { type: 'results', results: { service: { usage, measuredAt, record } } }
+//                     measure-all with maxAgeHours: N answers from what is saved for any service
+//                       measured in the last N hours (usage message with saved: true) and counts the rest
 //                     window.postMessage({ source: 'offset-site', type: 'forget' })
-//                       delete the per-chat counts the extension keeps between runs; answered with 'forgotten'
+//                       delete everything the extension keeps between runs; answered with 'forgotten'
 // Extension -> page:  { source: 'offset-extension', type: 'ready', version }
 //                     { source: 'offset-extension', type: 'started', requestId, services, needsPermission }
 //                       needsPermission lists services the person is now being asked to allow
@@ -53,8 +58,13 @@
       chrome.runtime.sendMessage({ type: 'forget' }, function (res) {
         toPage({ type: chrome.runtime.lastError || !res ? 'error' : 'forgotten', error: res ? undefined : 'unavailable' });
       });
+    } else if (m.type === 'results') {
+      chrome.runtime.sendMessage({ type: 'results' }, function (res) {
+        var failed = chrome.runtime.lastError || !res;
+        toPage({ type: failed ? 'error' : 'results', error: failed ? 'unavailable' : undefined, results: res && res.results });
+      });
     } else if (m.type === 'measure' || m.type === 'measure-all') {
-      var request = { type: m.type, service: m.service, services: m.services, openLogins: m.openLogins === true, requestId: m.requestId };
+      var request = { type: m.type, service: m.service, services: m.services, openLogins: m.openLogins === true, maxAgeHours: m.maxAgeHours, requestId: m.requestId };
       chrome.runtime.sendMessage(request, function (res) {
         var failed = chrome.runtime.lastError || !res || !res.ok;
         toPage({

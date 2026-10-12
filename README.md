@@ -33,7 +33,9 @@ messages on the page's origin.
 | Page sends (`source: 'offset-site'`) | Meaning |
 | --- | --- |
 | `{ type: 'ping' }` | Is the extension installed? |
-| `{ type: 'forget' }` | Delete the per-chat counts the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
+| `{ type: 'results' }` | The saved result of every service that has one, at once, without opening anything. Answered with `{ type: 'results', results: { service: { usage, measuredAt, record } } }`. |
+| `{ type: 'measure-all', ..., maxAgeHours: N }` | A service measured in the last N hours is answered from what is saved (a `usage` message with `saved: true`); the rest are counted. |
+| `{ type: 'forget' }` | Delete everything the extension keeps between runs. Answered with `{ type: 'forgotten' }`. |
 | `{ type: 'measure-all', requestId, services? }` | Measure every service, or the ones listed, in a separate minimized window. |
 | `{ type: 'measure-all', ..., openLogins: true }` | As above, and the login page of each signed-out service is brought to the person: its tab moves beside the site, the first is put in front, and each closes itself once it has counted. Answered with `login-needed` for those services. Ask only for services the person says they use, or a new visitor gets a tab for every service. |
 | `{ type: 'measure', service, requestId }` | Measure one service in a front tab, so the person can sign in. |
@@ -93,6 +95,16 @@ Things to know when using these numbers:
 - The numbers are measured in the person's own browser. Nothing proves them.
 
 ## What the extension remembers
+
+For every service it keeps the last result it sent the site and when it was
+measured, so the site can show numbers the moment the page opens and need not
+count again when a count is recent. It also keeps the counts for each day it has
+ever measured (`record`, oldest first, up to 800 days). Each count reaches back
+30 days, so someone who measures monthly builds a record with no gaps that goes
+back further than any service's own history. `usage` messages carry `measuredAt`
+and `record` too. This is the same totals-and-dates data the site is sent,
+nothing more.
+
 
 For ChatGPT it keeps, per chat, the counts it made (prompts, reasoning answers
 and images per day) and when that chat last changed. A chat that has not changed

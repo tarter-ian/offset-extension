@@ -39,6 +39,35 @@ const dropJob = (tabId) => chrome.storage.session.remove(key(tabId));
 // on this computer between runs. See the "remembered" note in the counting scripts.
 const memoryKey = (service) => `memory:${service}`;
 
+// The last result for each service and when it was measured, kept on this
+// computer so the site can show it at once instead of counting again. Beside it,
+// the counts for each day ever measured, so a record builds up that reaches
+// further back than any one count does. Totals and dates only, as sent to the site.
+const savedKey = (service) => `saved:${service}`;
+const KEEP_DAYS = 800;
+
+async function saveResult(service, usage) {
+  const measuredAt = new Date().toISOString();
+  const old = (await chrome.storage.local.get(savedKey(service)))[savedKey(service)];
+  const days = { ...(old && old.days) };
+  for (const day of Array.isArray(usage.daily) ? usage.daily : []) {
+    if (day && typeof day.date === 'string') days[day.date] = day;
+  }
+  const cutoff = new Date(Date.now() - KEEP_DAYS * 86400000).toISOString().slice(0, 10);
+  for (const date of Object.keys(days)) if (date < cutoff) delete days[date];
+  await chrome.storage.local.set({ [savedKey(service)]: { usage, measuredAt, days } });
+  return measuredAt;
+}
+
+// What the site is given for a saved service: its last result, when that was
+// measured, and every day on record, oldest first.
+async function savedResult(service) {
+  const saved = (await chrome.storage.local.get(savedKey(service)))[savedKey(service)];
+  if (!saved || !saved.usage) return null;
+  const record = Object.keys(saved.days || {}).sort().map((date) => saved.days[date]);
+  return { usage: saved.usage, measuredAt: saved.measuredAt, record };
+}
+
 // Tabs this worker is closing itself, so their closing is not reported as the person's doing.
 const closing = new Set();
 
@@ -199,12 +228,25 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!sender.tab) return;
 
-  // From the Offset site: throw away the per-chat counts kept between runs.
+  // From the Offset site: throw away everything kept between runs.
   if (message.type === 'forget') {
     (async () => {
       const all = await chrome.storage.local.get(null);
-      await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('memory:')));
+      await chrome.storage.local.remove(Object.keys(all).filter((k) => k.startsWith('memory:') || k.startsWith('saved:')));
       sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  // From the Offset site: the saved result of every service that has one. Opens nothing.
+  if (message.type === 'results') {
+    (async () => {
+      const results = {};
+      for (const service of Object.keys(SERVICES)) {
+        const saved = await savedResult(service);
+        if (saved) results[service] = saved;
+      }
+      sendResponse({ ok: true, results });
     })();
     return true;
   }
@@ -219,9 +261,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
     (async () => {
-      const ok = await Promise.all(services.map(allowed));
-      const ready = services.filter((s, i) => ok[i]);
-      const missing = services.filter((s, i) => !ok[i]);
+      // With maxAgeHours, a service measured that recently is answered from
+      // what is saved, and no tab is opened for it.
+      const maxAgeMs = Number(message.maxAgeHours) > 0 ? Number(message.maxAgeHours) * 3600000 : 0;
+      const fresh = [];
+      if (maxAgeMs) {
+        for (const service of services) {
+          const saved = await savedResult(service);
+          if (saved && Date.now() - Date.parse(saved.measuredAt) < maxAgeMs && !saved.usage.failedConversations) {
+            fresh.push(service);
+            tellSite(sender.tab.id, { type: 'usage', service, requestId: message.requestId, ...saved, saved: true });
+          }
+        }
+      }
+      const wanted = services.filter((s) => !fresh.includes(s));
+      const ok = await Promise.all(wanted.map(allowed));
+      const ready = wanted.filter((s, i) => ok[i]);
+      const missing = wanted.filter((s, i) => !ok[i]);
       const openLogins = !front && message.openLogins === true;
       await begin(ready, front, message.requestId, sender.tab, openLogins);
       if (missing.length) {
@@ -269,7 +325,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // Per-chat counts stay in the extension, on this computer. The site gets the totals only.
       const { remember, ...usage } = message.data;
       if (remember && typeof remember === 'object') await chrome.storage.local.set({ [memoryKey(job.service)]: remember });
-      await finish(tabId, job, { type: 'usage', usage });
+      const measuredAt = await saveResult(job.service, usage);
+      const saved = await savedResult(job.service);
+      await finish(tabId, job, { type: 'usage', usage, measuredAt, record: saved ? saved.record : [] });
     } else if (message.type === 'progress' && message.data && message.data.service === job.service) {
       // A running estimate while a slow count is still under way.
       chrome.tabs.sendMessage(job.siteTabId, { type: 'progress', service: job.service, requestId: job.requestId, usage: message.data }).catch(() => {});

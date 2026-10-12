@@ -26,6 +26,7 @@
     <p id="status">Looking for the extension...</p>
     <button id="all" disabled>Measure everything</button>
     <p><label><input type="checkbox" id="logins" checked /> Bring me the login page of anything I am signed out of</label></p>
+    <p><label><input type="checkbox" id="reuse" checked /> Reuse a result measured in the last 24 hours</label> <button id="forget" style="min-height:32px;padding:0 10px;font-weight:400">Forget saved results</button></p>
     <table>
       <tbody id="rows"></tbody>
     </table>
@@ -61,10 +62,10 @@
       }
 
       // In the background, in a separate minimized window.
-      function measure(services) {
+      function measure(services, reuse) {
         for (const s of services) state[s] = { kind: 'counting', text: 'Counting...' };
         draw();
-        send({ type: 'measure-all', services, openLogins: document.getElementById('logins').checked, requestId: crypto.randomUUID() });
+        send({ type: 'measure-all', services, openLogins: document.getElementById('logins').checked, maxAgeHours: reuse ? 24 : 0, requestId: crypto.randomUUID() });
         clearTimeout(noAnswer);
         // The extension answers "started" at once. Silence means this page has lost
         // touch with it, which happens when the extension was reloaded after the page.
@@ -95,7 +96,7 @@
             b.onclick = () => logIn(service);
           } else {
             b.textContent = s.kind === 'done' ? 'Measure again' : 'Measure';
-            b.onclick = () => measure([service]);
+            b.onclick = () => measure([service], false);
           }
           b.disabled = !found || working(s);
           tr.children[2].appendChild(b);
@@ -112,6 +113,7 @@
         const m = event.data;
         if (!m || m.source !== 'offset-extension') return;
         if (m.type === 'ready') {
+          if (!found) send({ type: 'results' });
           found = true;
           status.textContent = `Extension found (version ${m.version}).`;
           draw();
@@ -130,8 +132,18 @@
           state[m.service] = { kind: 'login', text: 'Its login page is open in a tab. Log in there and it counts by itself.' };
           draw();
         } else if (m.type === 'usage') {
-          state[m.service] = { kind: 'done', text: summary(m.service, m.usage) };
+          state[m.service] = { kind: 'done', text: summary(m.service, m.usage) + (m.saved ? ` (measured ${ago(m.measuredAt)})` : '') };
           draw();
+        } else if (m.type === 'results') {
+          // Saved results, shown as soon as the page opens.
+          for (const [service, r] of Object.entries(m.results || {})) {
+            if (state[service] && state[service].kind === 'idle') state[service] = { kind: 'done', text: `${summary(service, r.usage)} (measured ${ago(r.measuredAt)}, ${r.record.length} days on record)` };
+          }
+          draw();
+        } else if (m.type === 'forgotten') {
+          for (const service of Object.keys(state)) state[service] = { kind: 'idle', text: '' };
+          draw();
+          status.textContent = 'Saved results deleted.';
         } else if (m.type === 'error' && m.service && state[m.service]) {
           // A late message about a tab closing must not replace a result already shown.
           if (!working(state[m.service])) return;
@@ -146,7 +158,17 @@
         }
       });
 
-      all.addEventListener('click', () => measure(Object.keys(NAMES)));
+      all.addEventListener('click', () => measure(Object.keys(NAMES), document.getElementById('reuse').checked));
+      document.getElementById('forget').addEventListener('click', () => send({ type: 'forget' }));
+
+      // How long ago a saved result was measured, in plain words.
+      function ago(iso) {
+        const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+        if (minutes < 2) return 'just now';
+        if (minutes < 90) return minutes + ' minutes ago';
+        if (minutes < 36 * 60) return Math.round(minutes / 60) + ' hours ago';
+        return Math.round(minutes / 1440) + ' days ago';
+      }
 
       draw();
       send({ type: 'ping' });
