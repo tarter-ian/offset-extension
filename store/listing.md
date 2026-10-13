@@ -36,12 +36,12 @@ What it can count:
 - ChatGPT, Claude and Gemini: prompts and images per day
 - YouTube: videos and hours per day
 - Netflix: titles per day
-- DoorDash and Uber Eats: orders per day
+- DoorDash and Uber Eats: orders per day and what each order cost
 - Amazon: orders, items by broad kind, and what each order cost
-- Uber: rides and miles per day
+- Uber: rides and miles per day and what each ride cost
 
 What it never sends: your chats, video titles, product names, addresses, routes
-or passwords. Only counts, dates and, for Amazon, order totals leave each page.
+or passwords. Only counts, dates and order or ride totals leave each page.
 
 You stay in control:
 
@@ -75,10 +75,10 @@ footprint.
 | Host: `claude.ai` | Optional, asked for when the user first measures Claude. To count the user's prompts and read the share of their plan limit used. |
 | Host: `myactivity.google.com` | Optional, asked for when the user first measures Gemini or YouTube. To count the user's Gemini prompts and YouTube videos from their own Google activity page. |
 | Host: `www.netflix.com` | Optional, asked for when the user first measures Netflix. To count titles in the user's viewing activity. |
-| Host: `www.doordash.com` | Optional, asked for when the user first measures DoorDash. To count the user's orders. |
-| Host: `www.ubereats.com` | Optional, asked for when the user first measures Uber Eats. To count the user's orders. |
+| Host: `www.doordash.com` | Optional, asked for when the user first measures DoorDash. To count the user's orders and read order totals. |
+| Host: `www.ubereats.com` | Optional, asked for when the user first measures Uber Eats. To count the user's orders and read order totals. |
 | Host: `www.amazon.com` | Optional, asked for when the user first measures Amazon. To count the user's orders and items and read order totals. |
-| Host: `riders.uber.com` | Optional, asked for when the user first measures Uber. To count the user's rides and their distance. |
+| Host: `riders.uber.com` | Optional, asked for when the user first measures Uber. To count the user's rides, their distance and their fares. |
 | Content script on the My Offset site | To pass messages between the My Offset web page and the extension: the page's request to measure, and the counts in reply. |
 
 **Remote code**
@@ -91,7 +91,7 @@ Tick these categories:
 
 - **Web history**: no.
 - **User activity**: yes. Counts of the user's activity on the services they choose (for example prompts sent, videos watched, orders placed), by day.
-- **Financial and payment information**: yes. Amazon order totals, when the user measures Amazon. No card or account details.
+- **Financial and payment information**: yes. Order totals from Amazon, DoorDash and Uber Eats and ride fares from Uber, when the user measures those. No card or account details.
 - **Location**: no. Uber ride distance is read, but no addresses or routes.
 - **Personal communications**: no. Chat text is counted in the page and never leaves it.
 - **Website content**: no.

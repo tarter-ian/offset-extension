@@ -5,8 +5,9 @@ site can work out their footprint from real numbers instead of an estimate.
 
 The person installs it once. After that the site can ask it to measure, and it
 does the rest: it opens each service in a separate minimized window, counts the
-last 30 days there, hands the counts to the site and closes the window. Only counts and
-dates leave the service's page. No chat text, titles or video ids.
+last 30 days there, hands the counts to the site and closes the window. Only counts,
+dates and, for shopping, food and rides, what each order or ride cost leave the
+service's page. No chat text, titles or video ids.
 
 It is installed with access to no site. The first time a service is measured, a
 small window lists what would be read and asks the person to allow it, one
@@ -146,10 +147,10 @@ MIT. See `LICENSE`.
 
 DoorDash and Uber Eats return orders, not energy. A delivery is a courier trip;
 a pickup is not. `items` is how many things were in the orders. `history` holds
-`firstOrder` and `monthly[]` of `{ month, orders }` for every order the account
+`firstOrder` and `monthly[]` of `{ month, orders, spend }` for every order the account
 has made, which is cheap to read because both sites list all past orders.
-Cancelled orders are left out. No restaurant, item name, price or address leaves
-the page.
+Cancelled orders are left out. Each order's total is read (see "What things
+cost"). No restaurant, item name, item price or address leaves the page.
 
 ## Amazon
 
@@ -175,7 +176,8 @@ each trip's distance is one request more, so distances are read only for trips
 in the last 30 days. `history.monthly` counts every ride the account has
 taken, by month; the list shows no year, so the year is worked out by walking
 back through it. Distances are converted to miles. Cancelled trips are left out.
-No address, route, driver or price leaves the page.
+Each ride's fare is read (see "What things cost"). No address, route or driver
+leaves the page.
 
 ## Netflix
 
@@ -234,10 +236,24 @@ add `usage.history = { whole, monthly: [{ month: 'YYYY-MM', ... }] }`.
 | Netflix | `titles` per month for the active profile's whole history. About one second per 50 titles. | Only `titlesEver`, a single total |
 | Gemini | `prompts` per month, as far back as Google has kept the activity. | Nothing before the 30 days |
 | ChatGPT, Claude, DoorDash, Uber Eats, Uber | No change: these already send `history` for the whole account on every count. | The same |
-| Amazon | No change yet: three months of orders per month. | The same |
+| Amazon | `orders` and `spend` per month for every year Amazon lists on the account. One page load per ten orders, so about three seconds per ten orders. | Three months |
 
 The extension keeps the last whole-history count for each service on the
 person's computer and returns it as `history` (with `measuredAt`) beside
 `usage` in every later `usage` and `results` answer, because a usual count
 does not replace it. `forget` deletes it with everything else. A whole-history
 request is never answered from saved results; `maxAgeHours` is ignored for it.
+
+## What things cost
+
+Four services send money totals with their counts, because the footprint of a
+purchase tracks its price better than its item count.
+
+| Service | Field | What it is |
+| --- | --- | --- |
+| Amazon | `spend`, `spendByKind`, `daily[].spend`, `history.monthly[].spend` | Each order's total, tax and shipping included |
+| DoorDash | `spend`, `daily[].spend`, `history.monthly[].spend` | Each order's grand total: food, fees, tax and tip |
+| Uber Eats | `spend`, `daily[].spend`, `history.monthly[].spend` | Each order's total |
+| Uber | `spend`, `daily[].spend`, `history.monthly[].spend` | Each ride's fare as the trip list shows it. Only rides charged in US dollars; `spend` and `currency` are null if there are none |
+
+`currency` says which currency. No item prices, card details or receipts are read.

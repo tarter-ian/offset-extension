@@ -1,7 +1,7 @@
 // Counting script: Uber rides, last 30 days, plus rides per month before that.
 // Reads the person's own trip list and, for recent trips, each trip's distance,
-// through the same requests the "My Trips" page makes. Only counts, distances and
-// dates leave the page; no addresses, routes, drivers or prices.
+// through the same requests the "My Trips" page makes. Counts, distances, dates
+// and what each ride cost leave the page; no addresses, routes or drivers.
 (function () {
   if (window.__offsetUberRides) return;
   window.__offsetUberRides = { started: false, done: false };
@@ -70,6 +70,13 @@
     return MONTHS.indexOf(m);
   }
 
+  // "$23.45" or "$8.99 • Canceled" to 23.45. Rides charged in another currency
+  // are written differently and give null.
+  function fareOf(description) {
+    var m = String(description || '').match(/^\s*\$\s?([\d,]+(?:\.\d{2})?)/);
+    return m ? parseFloat(m[1].replace(/,/g, '')) : null;
+  }
+
   var pad = function (n) { return (n < 10 ? '0' : '') + n; };
   var localDate = function (d) {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -82,6 +89,8 @@
     var months = {};
     var truncated = false;
     var failedTrips = 0;
+    var priced = false;
+    var cents = function (n) { return Math.round(n * 100) / 100; };
 
     // The list runs newest first with no year on each line. Walking back, the
     // year drops by one each time the month jumps forward (Jan back to Dec).
@@ -100,7 +109,13 @@
         if (month > lastMonth) year--;
         lastMonth = month;
         var key = year + '-' + pad(month + 1);
-        months[key] = (months[key] || 0) + 1;
+        var m = months[key] || (months[key] = { month: key, rides: 0, spend: 0 });
+        m.rides++;
+        var cost = fareOf(a.description);
+        if (cost !== null) {
+          m.spend += cost;
+          priced = true;
+        }
       });
 
       // Distances need one request per trip, so ask only while trips are recent.
@@ -131,8 +146,9 @@
           var end = Date.parse(trip.dropoffTime);
           var minutes = end > at ? (end - at) / 60000 : parseFloat(receipt.duration) || 0;
           var date = localDate(new Date(at));
-          var day = days[date] || (days[date] = { date: date, rides: 0, miles: 0, minutes: 0 });
+          var day = days[date] || (days[date] = { date: date, rides: 0, miles: 0, minutes: 0, spend: 0 });
           day.rides++;
+          day.spend += fareOf(group[i].description) || 0;
           day.miles += miles;
           day.minutes += minutes;
         }
@@ -151,12 +167,14 @@
     var round1 = function (n) { return Math.round(n * 10) / 10; };
     var daily = Object.keys(days).sort().map(function (k) {
       var d = days[k];
-      return { date: d.date, rides: d.rides, miles: round1(d.miles), minutes: Math.round(d.minutes) };
+      return { date: d.date, rides: d.rides, miles: round1(d.miles), minutes: Math.round(d.minutes), spend: cents(d.spend) };
     });
     var sum = function (key) {
       return daily.reduce(function (t, d) { return t + d[key]; }, 0);
     };
-    var monthly = Object.keys(months).sort().map(function (m) { return { month: m, rides: months[m] }; });
+    var monthly = Object.keys(months).sort().map(function (k) {
+      return { month: k, rides: months[k].rides, spend: cents(months[k].spend) };
+    });
     return {
       service: 'uber',
       windowDays: WINDOW_DAYS,
@@ -164,6 +182,9 @@
       rides: sum('rides'),
       miles: round1(sum('miles')),
       minutes: sum('minutes'),
+      // What the rides cost, for rides charged in US dollars. Null when none were.
+      spend: priced ? cents(sum('spend')) : null,
+      currency: priced ? 'USD' : null,
       activeDays: daily.length,
       daily: daily,
       // Every ride the account has taken, by month. Months come from the trip

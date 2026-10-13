@@ -6,10 +6,10 @@ const SERVICES = {
   claude: { name: 'Claude', site: 'claude.ai', reads: 'How many prompts you sent each day, and how much of your plan limit is used.' },
   gemini: { name: 'Gemini', site: 'myactivity.google.com', reads: 'How many Gemini prompts Google recorded each day.' },
   youtube: { name: 'YouTube', site: 'myactivity.google.com', reads: 'How many videos you watched each day and for how long.' },
-  doordash: { name: 'DoorDash', site: 'www.doordash.com', reads: 'How many orders you placed each day, and how many items.' },
-  ubereats: { name: 'Uber Eats', site: 'www.ubereats.com', reads: 'How many orders you placed each day, and how many items.' },
+  doordash: { name: 'DoorDash', site: 'www.doordash.com', reads: 'How many orders you placed each day, how many items, and what each order cost. Not what you ordered.' },
+  ubereats: { name: 'Uber Eats', site: 'www.ubereats.com', reads: 'How many orders you placed each day, how many items, and what each order cost. Not what you ordered.' },
   amazon: { name: 'Amazon', site: 'www.amazon.com', reads: 'How many orders and items each day, what each order cost, and what kind of thing each item was (such as electronics or clothing). Not the products themselves.' },
-  uber: { name: 'Uber', site: 'riders.uber.com', reads: 'How many rides you took each day, and how far. Not where you went.' },
+  uber: { name: 'Uber', site: 'riders.uber.com', reads: 'How many rides you took each day, how far, and what each cost. Not where you went.' },
   netflix: { name: 'Netflix', site: 'www.netflix.com', reads: 'How many titles you watched each day. Not which ones.' },
 };
 
@@ -20,6 +20,12 @@ const buttons = ['all', 'some', 'none'].map((b) => document.getElementById(b));
 
 const ask = (await chrome.storage.session.get(`ask:${id}`))[`ask:${id}`];
 const missing = ask ? ask.missing.filter((s) => SERVICES[s]) : [];
+
+// A whole-history count reads further back and takes longer; say so before the person agrees.
+if (ask && ask.history) {
+  document.getElementById('intro').textContent =
+    'This time it looks back through your whole history on each one, not just the last 30 days, and adds things up by month: how many prompts, videos, orders or rides. It takes a few minutes. Untick any you would rather leave out.';
+}
 
 if (!missing.length) {
   note.textContent = 'This request is no longer open. You can close this window.';

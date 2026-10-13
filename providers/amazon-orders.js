@@ -3,6 +3,7 @@
 // time. Each item is sorted into a broad kind (electronics, clothing and so on) in
 // the page. Counts, dates and order totals leave the page; no product names, item
 // prices or addresses.
+// Asked for the whole history, it reads every year Amazon lists, one after another.
 (function () {
   if (window.__offsetAmazonOrders) return;
   window.__offsetAmazonOrders = { started: false, done: false };
@@ -10,9 +11,12 @@
 
   var WINDOW_DAYS = 30;
   var PER_PAGE = 10;
-  var MAX_PAGES = 12;
+  var WHOLE = window.__offsetHistory === true;
+  // Ten orders a page, and each page is a fresh load of the tab.
+  var MAX_PAGES = WHOLE ? 200 : 12;
   var ORDERS_PATH = '/your-orders/orders';
-  var FILTER = 'months-3';
+  // Amazon's "past 3 months" view. The whole history uses its year views instead.
+  var RECENT = 'months-3';
   // Amazon fills each page in after it loads, so the orders already read are
   // kept here while the tab moves to the next page. Cleared when the count ends.
   var STASH = '__offsetAmazonOrders';
@@ -55,9 +59,48 @@
     el.textContent = text;
   }
 
-  var pageUrl = function (start) {
-    return 'https://www.amazon.com' + ORDERS_PATH + '?timeFilter=' + FILTER + '&startIndex=' + start;
+  var pageUrl = function (filter, start) {
+    return 'https://www.amazon.com' + ORDERS_PATH + '?timeFilter=' + filter + '&startIndex=' + start;
   };
+
+  // The years Amazon offers in its "orders placed in" menu, newest first.
+  function yearFilters() {
+    var menu = document.querySelector('#time-filter, select[name="timeFilter"]');
+    if (!menu) return [];
+    return Array.prototype.map
+      .call(menu.options, function (o) { return o.value; })
+      .filter(function (v) { return /^year-\d{4}$/.test(v); })
+      .sort()
+      .reverse();
+  }
+
+  // Waits until Amazon has filled in every order card on the page. It watches
+  // the page instead of checking on a timer, because Chrome slows timers right
+  // down in a tab nobody is looking at.
+  function filled() {
+    var look = function () {
+      var cards = Array.prototype.slice.call(document.querySelectorAll('.order-card'));
+      var read = cards.map(readCard);
+      return cards.length && read.every(Boolean) ? { cards: cards, read: read } : null;
+    };
+    return new Promise(function (resolve) {
+      var now = look();
+      if (now) return resolve(now);
+      var watcher = new MutationObserver(function () {
+        var got = look();
+        if (!got) return;
+        watcher.disconnect();
+        clearTimeout(giveUp);
+        resolve(got);
+      });
+      watcher.observe(document.body, { childList: true, subtree: true });
+      var giveUp = setTimeout(function () {
+        watcher.disconnect();
+        var cards = Array.prototype.slice.call(document.querySelectorAll('.order-card'));
+        resolve({ cards: cards, read: cards.map(readCard) });
+      }, 6000);
+    });
+  }
 
   function readStash() {
     try {
@@ -117,6 +160,7 @@
     var now = Date.now();
     var since = now - WINDOW_DAYS * 86400000;
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var cents = function (n) { return Math.round(n * 100) / 100; };
     var days = {};
     var months = {};
     var kinds = {};
@@ -126,7 +170,9 @@
       var d = new Date(o.at);
       var date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
       var month = date.slice(0, 7);
-      months[month] = (months[month] || 0) + 1;
+      var m = months[month] || (months[month] = { orders: 0, spend: 0 });
+      m.orders++;
+      m.spend += o.total || 0;
       // Amazon gives the day an order was placed, not the time, so compare whole days.
       if (o.at < since - 86400000) return;
       var day = days[date] || (days[date] = { date: date, orders: 0, items: 0, spend: 0 });
@@ -140,7 +186,6 @@
         spendKinds[k] = (spendKinds[k] || 0) + ((o.total || 0) * o.kinds[k]) / (o.items || 1);
       });
     });
-    var cents = function (n) { return Math.round(n * 100) / 100; };
     var daily = Object.keys(days).sort().map(function (k) {
       days[k].spend = cents(days[k].spend);
       return days[k];
@@ -164,57 +209,79 @@
       currency: 'USD',
       activeDays: daily.length,
       daily: daily,
-      // The three months Amazon's "past 3 months" view covers; the oldest may be partial.
-      history: { monthly: Object.keys(months).sort().map(function (m) { return { month: m, orders: months[m] }; }) },
+      // Orders per month. Usually the three months Amazon's "past 3 months" view
+      // covers (the oldest may be partial); every year on the account when the
+      // whole history was asked for, and then "whole" says whether it reached the end.
+      history: {
+        whole: WHOLE ? !truncated : undefined,
+        monthly: Object.keys(months).sort().map(function (m) { return { month: m, orders: months[m].orders, spend: cents(months[m].spend) }; }),
+      },
       truncated: truncated,
     };
   }
 
   async function run() {
-    if (state.started || state.done) return;
+    // Once the tab has been sent to another page, do nothing more on this one.
+    if (state.started || state.done || state.leaving) return;
     if (location.hostname !== 'www.amazon.com') return;
     // Signed out, Amazon shows its sign-in page on this same site. Wait there.
     if (/^\/ap\//.test(location.pathname)) return;
     var params = new URLSearchParams(location.search);
     var start = Number(params.get('startIndex') || 0);
+    var filter = params.get('timeFilter');
+    var onOrders = location.pathname === ORDERS_PATH;
+    // The stash says which view and page this count sent the tab to. Anything
+    // else is a fresh start.
     var stash = readStash();
-    var onOrders = location.pathname === ORDERS_PATH && params.get('timeFilter') === FILTER;
-    // Begin at the first page, and only carry on from a page this count sent the tab to.
-    if (!onOrders || (start > 0 && !(stash && stash.next === start))) {
-      sessionStorage.removeItem(STASH);
-      location.href = pageUrl(0);
-      return;
+    var expected = stash && stash.filters[stash.at] === filter && stash.next === start;
+    if (!onOrders || !expected) {
+      if (onOrders && filter === RECENT && start === 0) stash = null; // The first page of a fresh count.
+      else {
+        sessionStorage.removeItem(STASH);
+        state.leaving = true;
+        location.href = pageUrl(RECENT, 0);
+        return;
+      }
     }
     if (document.readyState !== 'complete') return;
     state.started = true;
     try {
       banner('Reading your Amazon orders...');
-      // Wait for Amazon to fill the cards in.
-      var cards = [];
-      var read = [];
-      for (var tries = 0; tries < 16; tries++) {
-        cards = Array.prototype.slice.call(document.querySelectorAll('.order-card'));
-        read = cards.map(readCard);
-        if (cards.length && read.every(Boolean)) break;
-        await sleep(500);
+      if (!stash) {
+        stash = { orders: [], filters: [RECENT], at: 0, next: 0, pages: 0 };
+        var years = WHOLE ? yearFilters() : [];
+        if (years.length) {
+          // The whole history: leave the three-month view and walk the years instead.
+          stash.filters = years;
+          sessionStorage.setItem(STASH, JSON.stringify(stash));
+          state.leaving = true; // The next page loads a fresh copy of this script.
+          location.href = pageUrl(years[0], 0);
+          return;
+        }
       }
-      var orders = (start > 0 && stash ? stash.orders : []).concat(read.filter(Boolean));
-      var page = start / PER_PAGE;
-      var more = cards.length >= PER_PAGE && !!document.querySelector('.a-pagination .a-last:not(.a-disabled) a');
-      if (more && page + 1 < MAX_PAGES) {
-        sessionStorage.setItem(STASH, JSON.stringify({ orders: orders, next: start + PER_PAGE }));
-        state.started = false; // The next page loads a fresh copy of this script.
-        location.href = pageUrl(start + PER_PAGE);
+      var got = await filled();
+      var orders = stash.orders.concat(got.read.filter(Boolean));
+      var pages = (stash.pages || 0) + 1;
+      var more = got.cards.length >= PER_PAGE && !!document.querySelector('.a-pagination .a-last:not(.a-disabled) a');
+      var nextView = stash.at + 1 < stash.filters.length;
+      if ((more || nextView) && pages < MAX_PAGES) {
+        var next = more
+          ? { orders: orders, filters: stash.filters, at: stash.at, next: start + PER_PAGE, pages: pages }
+          : { orders: orders, filters: stash.filters, at: stash.at + 1, next: 0, pages: pages };
+        sessionStorage.setItem(STASH, JSON.stringify(next));
+        if (WHOLE) banner('Reading your Amazon orders: ' + orders.length + ' so far');
+        state.leaving = true; // The next page loads a fresh copy of this script.
+        location.href = pageUrl(next.filters[next.at], next.next);
         return;
       }
-      var usage = finish(orders, more);
+      var usage = finish(orders, more || nextView);
       state.usage = usage;
       if (window.Reclaim && typeof window.Reclaim.updatePublicData === 'function') {
         window.Reclaim.updatePublicData(usage);
       }
       banner('Done.');
       if (window.Reclaim && typeof window.Reclaim.requestClaim === 'function') {
-        await window.Reclaim.requestClaim({ url: pageUrl(0), method: 'GET' });
+        await window.Reclaim.requestClaim({ url: pageUrl(RECENT, 0), method: 'GET' });
       }
       state.done = true;
     } catch (e) {

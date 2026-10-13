@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>My Offset: allow measuring</title>
+    <title>My Offset: may it count?</title>
     <style>
       body { font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 24px; color: #14201b; background: #fff; }
       h1 { font-size: 20px; margin: 0 0 6px; }
@@ -22,18 +22,22 @@
     </style>
   </head>
   <body>
-    <h1>Allow My Offset to count your usage?</h1>
-    <p>My Offset counts how much you used each service in the last 30 days. Choose which ones.</p>
+    <h1>Can My Offset count how much you use these?</h1>
+    <p id="intro">
+      It opens your own account on each one and adds things up for the last 30 days: how many prompts, videos, orders
+      or rides. Untick any you would rather leave out.
+    </p>
     <div id="list"></div>
     <div class="actions">
       <button id="all" class="main">Allow all</button>
-      <button id="some">Allow selected</button>
+      <button id="some">Allow the ones I ticked</button>
       <button id="none">Not now</button>
     </div>
     <p id="note" class="muted"></p>
     <p class="muted">
-      Chrome will ask you to confirm. My Offset reads these sites only when you press Measure, and never your chats, video
-      titles or passwords. You can take access back at any time in Chrome's extension settings.
+      Chrome will ask you once more to confirm. Only the totals leave each page. Your chats, what you watched, what you
+      bought and where you went stay where they are, and so do your passwords. You can take this back whenever you like
+      in Chrome's extension settings.
     </p>
     <script type="module" src="permit.js"></script>
   </body>

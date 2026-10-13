@@ -1,6 +1,7 @@
 // Counting script: Uber Eats orders, last 30 days, plus orders per month before that.
 // Reads the person's own past orders from the same address the orders page uses.
-// Only counts and dates leave the page; no restaurants, items, prices or addresses.
+// Counts, dates and order totals leave the page; no restaurants, items, item
+// prices or addresses.
 (function () {
   if (window.__offsetUbereatsOrders) return;
   window.__offsetUbereatsOrders = { started: false, done: false };
@@ -60,6 +61,8 @@
     var months = {};
     var firstOrder = null;
     var truncated = false;
+    var currency = null;
+    var cents = function (n) { return Math.round(n * 100) / 100; };
     var data = first;
 
     for (var p = 0; p < MAX_PAGES && data; p++) {
@@ -72,11 +75,18 @@
         if (!at) return;
         var date = localDate(new Date(at));
         if (!firstOrder || date < firstOrder) firstOrder = date;
+        // What the order cost in all. Uber Eats gives it in cents.
+        var fare = order.fareInfo;
+        var total = fare && typeof fare.totalPrice === 'number' ? fare.totalPrice / 100 : 0;
+        if (!currency && base.currencyCode) currency = base.currencyCode;
         var month = date.slice(0, 7);
-        months[month] = (months[month] || 0) + 1;
+        var m = months[month] || (months[month] = { month: month, orders: 0, spend: 0 });
+        m.orders++;
+        m.spend += total;
         if (at < since) return;
-        var day = days[date] || (days[date] = { date: date, orders: 0, deliveries: 0, pickups: 0, items: 0 });
+        var day = days[date] || (days[date] = { date: date, orders: 0, deliveries: 0, pickups: 0, items: 0, spend: 0 });
         day.orders++;
+        day.spend += total;
         if (/pickup/i.test(String(base.fulfillmentType || ''))) day.pickups++;
         else day.deliveries++;
         day.items += Number(base.totalQuantity) > 0 ? Number(base.totalQuantity) : Number(base.numItems) || 1;
@@ -92,7 +102,10 @@
       if (!data) truncated = true;
     }
 
-    var daily = Object.keys(days).sort().map(function (k) { return days[k]; });
+    var daily = Object.keys(days).sort().map(function (k) {
+      days[k].spend = cents(days[k].spend);
+      return days[k];
+    });
     var sum = function (key) {
       return daily.reduce(function (t, d) { return t + d[key]; }, 0);
     };
@@ -105,12 +118,17 @@
       deliveries: sum('deliveries'),
       pickups: sum('pickups'),
       items: sum('items'),
+      // Order totals, in the currency Uber Eats charged.
+      spend: cents(sum('spend')),
+      currency: currency,
       activeDays: daily.length,
       daily: daily,
       // Every order the account has made, by month, so past use need not be guessed.
       history: {
         firstOrder: firstOrder,
-        monthly: Object.keys(months).sort().map(function (m) { return { month: m, orders: months[m] }; }),
+        monthly: Object.keys(months).sort().map(function (k) {
+          return { month: k, orders: months[k].orders, spend: cents(months[k].spend) };
+        }),
       },
       truncated: truncated,
     };
