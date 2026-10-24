@@ -13,8 +13,8 @@ import { fileURLToPath } from 'node:url'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'))
 
-// The addresses the published extension talks to. Add the site's own domain here when it has one.
-const SITE_MATCHES = ['https://*.itsian123.workers.dev/*', 'https://offset-website-kappa.vercel.app/*']
+// The addresses the published extension talks to: the site's own domain, and its Cloudflare address.
+const SITE_MATCHES = ['https://myoffset.org/*', 'https://www.myoffset.org/*', 'https://offset-website.itsian123.workers.dev/*']
 const SHIPPED = ['background.js', 'site-bridge.js', 'provider-shim.js', 'provider-relay.js', 'permit.html', 'permit.js', 'LICENSE', 'providers', 'icons']
 
 // Every shipped file as [path inside the zip, contents].
