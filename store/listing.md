@@ -106,7 +106,7 @@ Certify all three:
 
 **Privacy policy URL**
 
-https://offset-website.itsian123.workers.dev/data
+https://myoffset.org/data
 
 Check before submitting that this page says, in its own words, what the list
 under "Data usage" says. The store compares the two.
